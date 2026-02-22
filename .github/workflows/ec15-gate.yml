@@ -1,0 +1,33 @@
+name: EC-15 State Integrity Gate
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  ec15:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Sync dependencies
+        run: uv sync --extra dev
+
+      - name: Ensure pip exists for spaCy downloader
+        run: uv run python -m ensurepip
+
+      - name: Install spaCy model
+        run: uv run python -m spacy download en_core_web_lg
+
+      - name: Run EC-15 state integrity tests
+        run: uv run pytest -q tests/test_state_integrity/test_ec15_state_integrity.py
+

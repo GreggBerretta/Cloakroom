@@ -9,6 +9,8 @@ Current recommendation:
 - Optional (future): internal Homebrew tap wrapper around the same CLI
 - Not recommended now: PyInstaller packaging (defer unless users reject Python environment setup)
 
+This document covers the current supported path: `uv sync`.
+
 ## Prerequisites
 - macOS (tested on Apple Silicon + recent Intel)
 - Git
@@ -22,6 +24,11 @@ cd cowork-shield
 uv sync --extra dev
 uv run python -m ensurepip
 uv run python -m spacy download en_core_web_lg
+```
+
+Optional shell alias for daily usage:
+```bash
+alias cws='uv run cowork-shield'
 ```
 
 ## Verify
@@ -40,6 +47,12 @@ Expected:
 ```bash
 uv run cowork-shield anonymize ./sample.txt -w client-a
 uv run cowork-shield restore ./sample.anonymized.txt -w client-a
+```
+
+First workspace sanity check:
+```bash
+uv run cowork-shield workspace list
+uv run cowork-shield workspace show client-a
 ```
 
 Clipboard flow:
@@ -67,4 +80,3 @@ uv run cowork-shield workspace import-key --workspace client-a --input ./client-
 ## Notes
 - Recovery key files are encrypted with your passphrase and written with `0600` permissions.
 - If Keychain entry is deleted and no recovery export exists, workspace decryption is unrecoverable by design.
-
