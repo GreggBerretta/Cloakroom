@@ -112,8 +112,21 @@ If Hebrew detection fails to initialize:
 uv run python -m spacy download he_core_news_sm || uv run python -m spacy download xx_ent_wiki_sm
 ```
 
+The detector prefers `he_core_news_sm` and automatically falls back to `xx_ent_wiki_sm` if available.
+
 If auto language selection is unstable for short text, force explicit language:
 ```bash
 uv run cowork-shield anonymize <file> --language he
 uv run cowork-shield shield-clipboard --language he
+```
+
+## 8) Environment Repair
+If `spacy download` fails with `No module named pip`:
+```bash
+uv run python -m ensurepip
+```
+
+If you see binary compatibility errors (for example `numpy.dtype size changed`):
+```bash
+uv sync --extra dev
 ```

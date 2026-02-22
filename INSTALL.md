@@ -19,6 +19,17 @@ This document covers the current supported path: `uv sync`.
 
 ## Install Steps
 ```bash
+git clone https://github.com/GreggBerretta/cowork-shield-fork.git
+cd cowork-shield-fork
+git checkout codex/handoff-b-status-doc
+uv sync --extra dev
+uv run python -m ensurepip
+uv run python -m spacy download en_core_web_lg
+uv run python -m spacy download he_core_news_sm || uv run python -m spacy download xx_ent_wiki_sm
+```
+
+If you are installing from the source repo instead of the fork:
+```bash
 git clone https://github.com/GreggBerretta/cowork-shield.git
 cd cowork-shield
 uv sync --extra dev
@@ -111,6 +122,9 @@ Current Hebrew caveats:
 - Hebrew NER quality is moderate compared with English.
 - `he_core_news_sm` may be unavailable in some spaCy distributions; fallback model is `xx_ent_wiki_sm`.
 - Always validate high-stakes outputs during early pilot usage.
+
+Operational note:
+- Keep dependencies pinned by re-running `uv sync --extra dev` after pulling updates.
 
 ## Key Recovery (Admin)
 Export encrypted recovery key:
