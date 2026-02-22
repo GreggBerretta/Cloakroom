@@ -1,6 +1,7 @@
 """Tests for the text replacement engine."""
 
 import os
+import unicodedata
 
 from cowork_shield.models import DetectedEntity, EntityType
 from cowork_shield.tokenizer.generator import TokenGenerator
@@ -104,3 +105,22 @@ class TestRestoreTokens:
         lookup = gen.get_reverse_lookup()
         restored = self.replacer.restore_tokens(anonymized, lookup)
         assert restored == text
+
+    def test_hebrew_rtl_token_replacement(self):
+        gen = TokenGenerator(os.urandom(32))
+        text = "שלום ישראל ישראלי"
+        entities = [
+            DetectedEntity(
+                entity_type=EntityType.LOCATION,
+                text="ישראל",
+                start=5,
+                end=10,
+                score=0.99,
+            )
+        ]
+
+        anonymized, _ = self.replacer.replace_entities(text, entities, gen)
+        assert anonymized == "שלום [LOCATION_00001] ישראלי"
+
+        restored = self.replacer.restore_tokens(anonymized, gen.get_reverse_lookup())
+        assert unicodedata.normalize("NFC", restored) == unicodedata.normalize("NFC", text)

@@ -10,7 +10,7 @@ from openpyxl.utils import get_column_letter
 
 from cowork_shield.detection.engine import DetectionEngine
 from cowork_shield.exceptions import XLSXContentLossRiskError
-from cowork_shield.models import FileRecord, ReplacementRecord, now_iso
+from cowork_shield.models import DetectedEntity, FileRecord, ReplacementRecord, now_iso
 from cowork_shield.tokenizer.generator import TokenGenerator
 from cowork_shield.tokenizer.replacer import TextReplacer
 from cowork_shield.verification.verifier import compute_sha256
@@ -45,6 +45,7 @@ class XlsxHandler:
         detection_engine: DetectionEngine,
         token_generator: TokenGenerator,
         source_file: str = "",
+        language: str = "auto",
     ) -> tuple[list[ReplacementRecord], FileRecord]:
         # Create backup before any modification
         backup_path = input_path.with_suffix(input_path.suffix + ".backup")
@@ -84,7 +85,12 @@ class XlsxHandler:
                         f"{sheet_name}!{get_column_letter(cell.column)}{cell.row}"
                     )
 
-                    entities = detection_engine.detect_in_cell(value_str, source_id)
+                    entities = _detect_entities(
+                        detection_engine,
+                        text=value_str,
+                        source_id=source_id,
+                        language=language,
+                    )
                     total_entities += len(entities)
 
                     if entities:
@@ -150,3 +156,17 @@ class XlsxHandler:
                 if len(worksheet._images) > 0:
                     return True
         return False
+
+
+def _detect_entities(
+    detection_engine: DetectionEngine,
+    *,
+    text: str,
+    source_id: str,
+    language: str,
+) -> list[DetectedEntity]:
+    try:
+        return detection_engine.detect_in_cell(text, source_id, language=language)
+    except TypeError:
+        # Compatibility for tests using stub engines without language arg.
+        return detection_engine.detect_in_cell(text, source_id)

@@ -8,6 +8,7 @@ from pathlib import Path
 
 from cowork_shield.detection.engine import DetectionEngine
 from cowork_shield.exceptions import (
+    DetectionError,
     HallucinationDetectedError,
     IncompleteRestorationError,
     IntegrityError,
@@ -40,6 +41,8 @@ def sanitize_ui_error(exc: Exception) -> tuple[str, str]:
 
     if isinstance(exc, UnsupportedFormatError):
         return code, "Unsupported format. Use CSV, XLSX, DOCX, or TXT."
+    if isinstance(exc, DetectionError):
+        return code, "PII detection failed. Verify language model installation and retry."
     if isinstance(exc, WorkspaceNotFoundError):
         return code, "Workspace not found. Select an existing workspace."
     if isinstance(exc, WorkspaceExpiredError):
@@ -79,13 +82,14 @@ def preview_entities(
     file_path: str | Path,
     *,
     score_threshold: float = 0.7,
+    language: str = "auto",
     max_rows: int = 200,
 ) -> list[dict[str, str]]:
     """Detect and return entity rows for attestation/review."""
     path = Path(file_path).expanduser().resolve()
     text = _read_supported_text(path)
     detection = DetectionEngine(score_threshold=score_threshold)
-    entities = detection.detect(text)
+    entities = detection.detect(text, language=language)
 
     rows: list[dict[str, str]] = []
     for entity in entities[:max_rows]:
@@ -108,6 +112,7 @@ def anonymize_file(
     output_path: str | Path | None = None,
     ttl_hours: int = 168,
     score_threshold: float = 0.7,
+    language: str = "auto",
     allow_lossy_xlsx: bool = False,
     force_reanonymize: bool = False,
     reason: str = "",
@@ -121,11 +126,13 @@ def anonymize_file(
     entity_rows = preview_entities(
         input_path,
         score_threshold=score_threshold,
+        language=language,
     )
 
     pipeline = AnonymizePipeline(
         ctx,
         score_threshold=score_threshold,
+        language=language,
         force_reanonymize=force_reanonymize,
         override_reason=reason,
         override_user="ui",

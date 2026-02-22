@@ -48,6 +48,7 @@ class AnonymizePipeline:
         self,
         workspace_ctx: WorkspaceContext,
         score_threshold: float = 0.7,
+        language: str = "auto",
         *,
         clock: Clock | None = None,
         force_reanonymize: bool = False,
@@ -58,6 +59,7 @@ class AnonymizePipeline:
         self._ctx = workspace_ctx
         self._clock = clock or SystemClock()
         self._detection = DetectionEngine(score_threshold=score_threshold)
+        self._language = language
         self._force_reanonymize = force_reanonymize
         self._override_reason = override_reason.strip()
         self._override_user = override_user.strip()
@@ -103,7 +105,7 @@ class AnonymizePipeline:
             override_events: list[str] = []
 
             model_lock_key = self._detection.model_lock_key
-            locked_model_hash = self._ctx.vault_data.model_hashes.get(model_lock_key)
+            locked_model_hash = self._resolve_locked_model_hash(model_lock_key)
             if locked_model_hash and locked_model_hash != model_hash:
                 if not self._force_reanonymize:
                     raise ModelHashMismatchError(expected=locked_model_hash, actual=model_hash)
@@ -136,6 +138,7 @@ class AnonymizePipeline:
                     self._detection,
                     self._ctx.token_generator,
                     source_file=input_path.name,
+                    language=self._language,
                 )
             except Exception:
                 self._ctx.token_generator.load_state(counters_snapshot, mappings_snapshot)
@@ -213,3 +216,14 @@ class AnonymizePipeline:
         self._ctx.token_generator.load_state(counters_snapshot, mappings_snapshot)
         if output_path.exists():
             output_path.unlink()
+
+    def _resolve_locked_model_hash(self, model_lock_key: str) -> str:
+        model_hashes = self._ctx.vault_data.model_hashes
+        if model_lock_key in model_hashes:
+            return model_hashes[model_lock_key]
+
+        legacy_keys = getattr(self._detection, "legacy_model_lock_keys", ())
+        for legacy_key in legacy_keys:
+            if legacy_key in model_hashes:
+                return model_hashes[legacy_key]
+        return ""

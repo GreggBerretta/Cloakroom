@@ -24,6 +24,7 @@ cd cowork-shield
 uv sync --extra dev
 uv run python -m ensurepip
 uv run python -m spacy download en_core_web_lg
+uv run python -m spacy download he_core_news_sm || uv run python -m spacy download xx_ent_wiki_sm
 ```
 
 Optional shell alias for daily usage:
@@ -47,6 +48,7 @@ Expected:
 ```bash
 uv run cowork-shield anonymize ./sample.txt -w client-a
 uv run cowork-shield restore ./sample.anonymized.txt -w client-a
+uv run cowork-shield anonymize ./hebrew.txt -w client-a --language he
 ```
 
 First workspace sanity check:
@@ -93,7 +95,22 @@ Clipboard flow:
 ```bash
 uv run cowork-shield shield-clipboard -w client-a
 uv run cowork-shield restore-clipboard -w client-a
+uv run cowork-shield shield-clipboard -w client-a --language he
 ```
+
+## Language Support
+- Supported detection languages: `auto`, `en`, `he`
+- CLI options:
+  - `cowork-shield anonymize ... --language he`
+  - `cowork-shield shield-clipboard ... --language he`
+- UI options:
+  - TUI language selector (`Auto`/`English`/`Hebrew`)
+  - Gradio shield tab language dropdown (`auto`/`en`/`he`)
+
+Current Hebrew caveats:
+- Hebrew NER quality is moderate compared with English.
+- `he_core_news_sm` may be unavailable in some spaCy distributions; fallback model is `xx_ent_wiki_sm`.
+- Always validate high-stakes outputs during early pilot usage.
 
 ## Key Recovery (Admin)
 Export encrypted recovery key:

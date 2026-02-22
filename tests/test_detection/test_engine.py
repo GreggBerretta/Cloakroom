@@ -2,6 +2,7 @@
 
 import pytest
 
+from cowork_shield import detection
 from cowork_shield.detection.engine import DetectionEngine
 from cowork_shield.models import EntityType
 
@@ -25,14 +26,12 @@ class TestDetectionEngine:
 
     def test_detects_phone(self, engine):
         entities = engine.detect("My phone number is (212) 555-1234.")
-        types = [e.entity_type for e in entities]
         # Presidio may detect phone numbers with varying confidence;
         # use a more recognizable format or accept that the model may
         # not always detect short US phone numbers
         if not entities:
             # Try with international format
             entities = engine.detect("Call me at +1-212-555-1234 anytime.")
-            types = [e.entity_type for e in entities]
         assert len(entities) > 0, "Expected at least one entity detected"
 
     def test_no_pii(self, engine):
@@ -70,3 +69,29 @@ class TestDetectionEngine:
         entities = engine.detect("John Smith called Jane Doe at 555-123-4567.")
         positions = [e.start for e in entities]
         assert positions == sorted(positions)
+
+    def test_resolve_language_auto_detects_hebrew(self, monkeypatch):
+        monkeypatch.setattr(detection.engine, "detect_language_code", lambda _text: "he")
+        engine = DetectionEngine(score_threshold=0.5)
+        assert engine.resolve_language("שלום ישראל", "auto") == "he"
+
+    def test_resolve_language_auto_falls_back_to_en(self, monkeypatch):
+        def _raise(_text):
+            raise RuntimeError("language detector failure")
+
+        monkeypatch.setattr(detection.engine, "detect_language_code", _raise)
+        engine = DetectionEngine(score_threshold=0.5)
+        assert engine.resolve_language("some short text", "auto") == "en"
+
+    def test_detect_uses_explicit_language(self, monkeypatch):
+        captured = {"language": ""}
+
+        class FakeAnalyzer:
+            def analyze(self, *, text, entities, language):
+                captured["language"] = language
+                return []
+
+        monkeypatch.setattr(detection.engine, "_get_analyzer", lambda: FakeAnalyzer())
+        engine = DetectionEngine(score_threshold=0.5)
+        assert engine.detect("שלום", language="he") == []
+        assert captured["language"] == "he"

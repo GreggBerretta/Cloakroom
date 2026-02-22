@@ -7,10 +7,24 @@ from io import StringIO
 from pathlib import Path
 
 from cowork_shield.detection.engine import DetectionEngine
-from cowork_shield.models import FileRecord, ReplacementRecord, now_iso
+from cowork_shield.models import DetectedEntity, FileRecord, ReplacementRecord, now_iso
 from cowork_shield.tokenizer.generator import TokenGenerator
 from cowork_shield.tokenizer.replacer import TextReplacer
 from cowork_shield.verification.verifier import compute_sha256
+
+
+def _detect_entities(
+    detection_engine: DetectionEngine,
+    *,
+    text: str,
+    source_id: str,
+    language: str,
+) -> list[DetectedEntity]:
+    try:
+        return detection_engine.detect_in_cell(text, source_id, language=language)
+    except TypeError:
+        # Compatibility for tests using stub engines without language arg.
+        return detection_engine.detect_in_cell(text, source_id)
 
 
 class CsvHandler:
@@ -30,6 +44,7 @@ class CsvHandler:
         detection_engine: DetectionEngine,
         token_generator: TokenGenerator,
         source_file: str = "",
+        language: str = "auto",
     ) -> tuple[list[ReplacementRecord], FileRecord]:
         text = input_path.read_text(encoding="utf-8-sig")
 
@@ -58,7 +73,12 @@ class CsvHandler:
                     pass
 
                 source_id = f"row:{row_idx},col:{col_idx}"
-                entities = detection_engine.detect_in_cell(cell_value, source_id)
+                entities = _detect_entities(
+                    detection_engine,
+                    text=cell_value,
+                    source_id=source_id,
+                    language=language,
+                )
                 total_entities += len(entities)
 
                 if entities:
@@ -73,9 +93,7 @@ class CsvHandler:
         writer = csv.writer(output, dialect=dialect)
         writer.writerows(rows)
         # Write with UTF-8 BOM for Excel compatibility
-        output_path.write_text(
-            "\ufeff" + output.getvalue(), encoding="utf-8"
-        )
+        output_path.write_text("\ufeff" + output.getvalue(), encoding="utf-8")
 
         file_record = FileRecord(
             file_path=str(input_path),
@@ -117,6 +135,4 @@ class CsvHandler:
         output = StringIO()
         writer = csv.writer(output, dialect=dialect)
         writer.writerows(rows)
-        output_path.write_text(
-            "\ufeff" + output.getvalue(), encoding="utf-8"
-        )
+        output_path.write_text("\ufeff" + output.getvalue(), encoding="utf-8")

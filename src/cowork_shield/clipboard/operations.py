@@ -43,6 +43,7 @@ def shield_clipboard(
     workspace_ctx: WorkspaceContext,
     *,
     score_threshold: float = 0.7,
+    language: str = "auto",
     force_reanonymize: bool = False,
     override_reason: str = "",
     override_user: str = "",
@@ -64,7 +65,7 @@ def shield_clipboard(
         override_events: list[str] = []
 
         model_lock_key = detection.model_lock_key
-        locked_model_hash = workspace_ctx.vault_data.model_hashes.get(model_lock_key)
+        locked_model_hash = _resolve_locked_model_hash(workspace_ctx, detection, model_lock_key)
         if locked_model_hash and locked_model_hash != model_hash:
             if not force_reanonymize:
                 raise ModelHashMismatchError(expected=locked_model_hash, actual=model_hash)
@@ -82,7 +83,12 @@ def shield_clipboard(
 
         counters_snapshot, mappings_snapshot = workspace_ctx.token_generator.export_state()
 
-        entities = detection.detect_in_cell(text, "clipboard:0")
+        entities = _detect_in_cell(
+            detection,
+            text=text,
+            source_id="clipboard:0",
+            language=language,
+        )
         anonymized_text, records = replacer.replace_entities(
             text,
             entities,
@@ -209,6 +215,36 @@ def _expected_clipboard_tokens(workspace_ctx: WorkspaceContext) -> set[str]:
         if record.file_path == CLIPBOARD_FILE_ID:
             return set(record.applied_tokens)
     return set()
+
+
+def _resolve_locked_model_hash(
+    workspace_ctx: WorkspaceContext,
+    detection: DetectionEngine,
+    model_lock_key: str,
+) -> str:
+    model_hashes = workspace_ctx.vault_data.model_hashes
+    if model_lock_key in model_hashes:
+        return model_hashes[model_lock_key]
+
+    legacy_keys = getattr(detection, "legacy_model_lock_keys", ())
+    for legacy_key in legacy_keys:
+        if legacy_key in model_hashes:
+            return model_hashes[legacy_key]
+    return ""
+
+
+def _detect_in_cell(
+    detection_engine: DetectionEngine,
+    *,
+    text: str,
+    source_id: str,
+    language: str,
+):
+    try:
+        return detection_engine.detect_in_cell(text, source_id, language=language)
+    except TypeError:
+        # Compatibility for tests using stub engines without language arg.
+        return detection_engine.detect_in_cell(text, source_id)
 
 
 def _sha256_text(text: str) -> str:

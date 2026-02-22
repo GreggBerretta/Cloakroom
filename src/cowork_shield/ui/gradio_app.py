@@ -28,6 +28,7 @@ def _refresh_workspace_dropdown():
 def shield(
     uploaded_file,
     workspace,
+    language,
     allow_lossy_xlsx,
     force_reanonymize,
     override_reason,
@@ -52,12 +53,14 @@ def shield(
         )
 
     workspace_name = _normalize_workspace(workspace)
+    language_value = (language or "auto").strip().lower() or "auto"
     input_path = Path(uploaded_file.name)
 
     try:
         result = anonymize_file(
             input_path,
             workspace_name,
+            language=language_value,
             allow_lossy_xlsx=bool(allow_lossy_xlsx),
             force_reanonymize=bool(force_reanonymize),
             reason=reason,
@@ -109,6 +112,11 @@ def create_demo() -> gr.Blocks:
                 label="Workspace",
                 allow_custom_value=True,
             )
+            shield_language = gr.Dropdown(
+                choices=["auto", "en", "he"],
+                value="auto",
+                label="Detection Language",
+            )
             allow_lossy_xlsx = gr.Checkbox(
                 label="Allow lossy XLSX processing (--allow-lossy-xlsx)",
                 value=False,
@@ -137,6 +145,7 @@ def create_demo() -> gr.Blocks:
                 inputs=[
                     shield_file,
                     shield_workspace,
+                    shield_language,
                     allow_lossy_xlsx,
                     force_reanonymize,
                     override_reason,

@@ -8,7 +8,7 @@ from docx import Document
 from docx.text.paragraph import Paragraph
 
 from cowork_shield.detection.engine import DetectionEngine
-from cowork_shield.models import FileRecord, ReplacementRecord, now_iso
+from cowork_shield.models import DetectedEntity, FileRecord, ReplacementRecord, now_iso
 from cowork_shield.tokenizer.generator import TokenGenerator
 from cowork_shield.tokenizer.replacer import TextReplacer
 from cowork_shield.verification.verifier import compute_sha256
@@ -41,6 +41,7 @@ class DocxHandler:
         detection_engine: DetectionEngine,
         token_generator: TokenGenerator,
         source_file: str = "",
+        language: str = "auto",
     ) -> tuple[list[ReplacementRecord], FileRecord]:
         doc = Document(str(input_path))
         all_records: list[ReplacementRecord] = []
@@ -50,7 +51,7 @@ class DocxHandler:
         for i, para in enumerate(doc.paragraphs):
             entities_found, records = self._process_paragraph(
                 para, detection_engine, token_generator,
-                f"para:{i}", source_file,
+                f"para:{i}", source_file, language,
             )
             total_entities += entities_found
             all_records.extend(records)
@@ -62,7 +63,7 @@ class DocxHandler:
                     for p, para in enumerate(cell.paragraphs):
                         entities_found, records = self._process_paragraph(
                             para, detection_engine, token_generator,
-                            f"table:{t},row:{r},col:{c},para:{p}", source_file,
+                            f"table:{t},row:{r},col:{c},para:{p}", source_file, language,
                         )
                         total_entities += entities_found
                         all_records.extend(records)
@@ -75,7 +76,7 @@ class DocxHandler:
                 for p, para in enumerate(getattr(hf, "paragraphs", [])):
                     entities_found, records = self._process_paragraph(
                         para, detection_engine, token_generator,
-                        f"section:{s},{label},para:{p}", source_file,
+                        f"section:{s},{label},para:{p}", source_file, language,
                     )
                     total_entities += entities_found
                     all_records.extend(records)
@@ -131,6 +132,7 @@ class DocxHandler:
         token_generator: TokenGenerator,
         para_id: str,
         source_file: str,
+        language: str,
     ) -> tuple[int, list[ReplacementRecord]]:
         """Process a single paragraph: detect, replace, redistribute to runs."""
         runs = paragraph.runs
@@ -142,7 +144,12 @@ class DocxHandler:
             return 0, []
 
         # Detect entities in full paragraph text
-        entities = detection_engine.detect_in_cell(full_text, para_id)
+        entities = _detect_entities(
+            detection_engine,
+            text=full_text,
+            source_id=para_id,
+            language=language,
+        )
         if not entities:
             return 0, []
 
@@ -302,3 +309,17 @@ class DocxHandler:
             runs[0].text = restored
             for run in runs[1:]:
                 run.text = ""
+
+
+def _detect_entities(
+    detection_engine: DetectionEngine,
+    *,
+    text: str,
+    source_id: str,
+    language: str,
+) -> list[DetectedEntity]:
+    try:
+        return detection_engine.detect_in_cell(text, source_id, language=language)
+    except TypeError:
+        # Compatibility for tests using stub engines without language arg.
+        return detection_engine.detect_in_cell(text, source_id)

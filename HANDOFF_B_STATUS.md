@@ -30,9 +30,10 @@ This document is intended to be sufficient for another engineer to continue with
 - Textual TUI and Gradio Web UI frontends are implemented.
 - UI risky operations now require explicit confirmation gates (lossy XLSX + force re-anonymize).
 - UI error handling is sanitized to avoid echoing sensitive payloads/tokens.
+- Multi-language detection is implemented (`auto`, `en`, `he`) with Hebrew model fallback support.
 
 ### Validation
-- Full test suite: **170 passed**.
+- Full test suite: **174 passed**.
 - EC-15 suite: **14 passed**.
 
 ## 3) Where Everything Sits
@@ -94,6 +95,7 @@ This document is intended to be sufficient for another engineer to continue with
 ### Important Flags
 - `--force-reanonymize --reason "..."` (audited override)
 - `--allow-lossy-xlsx` (explicit XLSX lossy-content acknowledgment)
+- `--language auto|en|he` (detection language selection)
 
 ## 5) Test Inventory and Execution
 ### Primary Commands
@@ -120,7 +122,9 @@ This document is intended to be sufficient for another engineer to continue with
 ## 6) Pilot Operations Status
 ### Installation and Onboarding
 - Install flow documented in `INSTALL.md` (uv sync path).
-- Prereqs include model install: `uv run python -m spacy download en_core_web_lg`.
+- Prereqs include model install:
+  - `uv run python -m spacy download en_core_web_lg`
+  - `uv run python -m spacy download he_core_news_sm || uv run python -m spacy download xx_ent_wiki_sm`
 - UI launch instructions documented for both `cowork-shield-tui` and `cowork-shield-gradio`.
 
 ### Support Model
@@ -158,15 +162,16 @@ This document is intended to be sufficient for another engineer to continue with
 2. Run `uv sync --extra dev`.
 3. Run `uv run python -m ensurepip`.
 4. Run `uv run python -m spacy download en_core_web_lg`.
-5. Run `uv run pytest -q` and confirm green.
-6. Run `uv run pytest -q tests/test_state_integrity/test_ec15_state_integrity.py`.
-7. Review docs in this order: `HANDOFF_B.md`, `PRD_HANDOFF_B.md`, `HANDOFF_B_STATUS.md`, `INSTALL.md`, `TROUBLESHOOTING.md`.
-8. Continue next on weekly drift + performance sentinel implementation.
+5. Run `uv run python -m spacy download he_core_news_sm || uv run python -m spacy download xx_ent_wiki_sm`.
+6. Run `uv run pytest -q` and confirm green.
+7. Run `uv run pytest -q tests/test_state_integrity/test_ec15_state_integrity.py`.
+8. Review docs in this order: `HANDOFF_B.md`, `PRD_HANDOFF_B.md`, `HANDOFF_B_STATUS.md`, `INSTALL.md`, `TROUBLESHOOTING.md`.
+9. Continue next on weekly drift + performance sentinel implementation.
 
 ## 10) Go/No-Go Matrix (Current)
 | Criterion | Status | Evidence |
 | --- | --- | --- |
-| Full Test Suite | ✅ | `170 passed` |
+| Full Test Suite | ✅ | `174 passed` |
 | EC-15 State Integrity | ✅ | `14 passed` |
 | CI Automation | ✅ | `ci.yml`, `ec15-gate.yml`, `weekly-trust-gate.yml` |
 | Install Path | ✅ | `INSTALL.md` |

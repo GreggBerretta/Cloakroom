@@ -26,8 +26,9 @@ jobs:
         run: uv run python -m ensurepip
 
       - name: Install spaCy model
-        run: uv run python -m spacy download en_core_web_lg
+        run: |
+          uv run python -m spacy download en_core_web_lg
+          uv run python -m spacy download he_core_news_sm || uv run python -m spacy download xx_ent_wiki_sm
 
       - name: Run EC-15 state integrity tests
         run: uv run pytest -q tests/test_state_integrity/test_ec15_state_integrity.py
-

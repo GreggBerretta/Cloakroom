@@ -14,6 +14,7 @@ class TestGradioShieldGuardrails:
         output_file, _, status = gradio_app.shield(
             uploaded,
             "default",
+            "auto",
             False,
             True,
             "",
@@ -27,6 +28,7 @@ class TestGradioShieldGuardrails:
         output_file, _, status = gradio_app.shield(
             uploaded,
             "default",
+            "auto",
             True,
             False,
             "",
@@ -45,6 +47,7 @@ class TestGradioShieldGuardrails:
         output_file, _, status = gradio_app.shield(
             uploaded,
             "default",
+            "auto",
             False,
             False,
             "",

@@ -20,6 +20,7 @@ Common examples:
 UI-specific examples:
 - `UnsupportedFormatError`: file extension not currently handled by pipeline
 - `CoWorkShieldError`: generic surfaced error in TUI/Gradio operation wrapper
+- `DetectionError`: language model missing or Presidio detection initialization/analysis failure
 
 ## 2) Safe Log Collection (No PII)
 Collect these outputs only:
@@ -103,4 +104,16 @@ Security requirement: keep Gradio on localhost (`127.0.0.1`) only. Do not bind `
 If port is in use, launch manually with a custom port:
 ```bash
 uv run python -c "from cowork_shield.ui.gradio_app import create_demo; create_demo().launch(server_name='127.0.0.1', server_port=7861)"
+```
+
+## 7) Hebrew Detection Issues
+If Hebrew detection fails to initialize:
+```bash
+uv run python -m spacy download he_core_news_sm || uv run python -m spacy download xx_ent_wiki_sm
+```
+
+If auto language selection is unstable for short text, force explicit language:
+```bash
+uv run cowork-shield anonymize <file> --language he
+uv run cowork-shield shield-clipboard --language he
 ```

@@ -103,6 +103,13 @@ class CoWorkShieldApp(App[None]):
                 allow_blank=False,
             )
             yield Input(placeholder="Path to file (CSV/XLSX/DOCX/TXT)", id="file_path")
+            yield Static("Language")
+            yield Select(
+                [("Auto", "auto"), ("English", "en"), ("Hebrew", "he")],
+                value="auto",
+                id="language",
+                allow_blank=False,
+            )
             yield Checkbox("Allow lossy XLSX (--allow-lossy-xlsx)", id="allow_lossy_xlsx")
             yield Checkbox(
                 "Force re-anonymize override (--force-reanonymize)",
@@ -146,7 +153,7 @@ class CoWorkShieldApp(App[None]):
         if path is None:
             return
         try:
-            rows = preview_entities(path)
+            rows = preview_entities(path, language=self._selected_language())
             self._set_table_rows(rows)
             self._set_status(f"Previewed {len(rows)} entity rows from {path.name}.")
         except (CoWorkShieldError, OSError) as exc:
@@ -158,6 +165,7 @@ class CoWorkShieldApp(App[None]):
         if path is None:
             return
         workspace = self._selected_workspace()
+        language = self._selected_language()
         allow_lossy_xlsx = self.query_one("#allow_lossy_xlsx", Checkbox).value
         force_reanonymize = self.query_one("#force_reanonymize", Checkbox).value
         override_reason = (self.query_one("#override_reason", Input).value or "").strip()
@@ -183,6 +191,7 @@ class CoWorkShieldApp(App[None]):
             result = anonymize_file(
                 path,
                 workspace,
+                language=language,
                 allow_lossy_xlsx=allow_lossy_xlsx,
                 force_reanonymize=force_reanonymize,
                 reason=override_reason,
@@ -229,6 +238,13 @@ class CoWorkShieldApp(App[None]):
             self._set_status(f"File not found: {path}")
             return None
         return path.resolve()
+
+    def _selected_language(self) -> str:
+        select = self.query_one("#language", Select)
+        value = select.value
+        if value in (None, Select.BLANK):
+            return "auto"
+        return str(value)
 
     def _set_status(self, message: str) -> None:
         self.query_one("#status", Static).update(message)

@@ -14,6 +14,7 @@ from cowork_shield.clipboard.operations import (
     restore_clipboard,
     shield_clipboard,
 )
+from cowork_shield.detection.engine import LANGUAGE_CHOICES
 from cowork_shield.exceptions import CoWorkShieldError
 from cowork_shield.pipeline.anonymize import AnonymizePipeline
 from cowork_shield.pipeline.restore import RestorePipeline
@@ -68,6 +69,12 @@ def main():
     help="Minimum Presidio confidence score (0.0-1.0)",
 )
 @click.option(
+    "--language",
+    type=click.Choice(LANGUAGE_CHOICES, case_sensitive=False),
+    default="auto",
+    help="Detection language: auto, en, or he.",
+)
+@click.option(
     "--allow-lossy-xlsx",
     is_flag=True,
     help="Allow XLSX processing even when chart/image loss risk is detected.",
@@ -89,6 +96,7 @@ def anonymize(
     workspace,
     ttl,
     score_threshold,
+    language,
     allow_lossy_xlsx,
     force_reanonymize,
     reason,
@@ -103,6 +111,7 @@ def anonymize(
         cowork-shield anonymize report.xlsx
         cowork-shield anonymize data.csv -w client-acme
         cowork-shield anonymize contract.docx -o contract.safe.docx
+        cowork-shield anonymize notes.txt --language he
     """
     try:
         if force_reanonymize and not reason.strip():
@@ -119,6 +128,7 @@ def anonymize(
         pipeline = AnonymizePipeline(
             ctx,
             score_threshold=score_threshold,
+            language=language.lower(),
             force_reanonymize=force_reanonymize,
             override_reason=reason,
             override_user=getpass.getuser(),
@@ -199,6 +209,12 @@ def restore(file, output, workspace):
     help="Minimum Presidio confidence score (0.0-1.0)",
 )
 @click.option(
+    "--language",
+    type=click.Choice(LANGUAGE_CHOICES, case_sensitive=False),
+    default="auto",
+    help="Detection language: auto, en, or he.",
+)
+@click.option(
     "--force-reanonymize",
     is_flag=True,
     help="Override deterministic/model lock checks (requires --reason).",
@@ -209,8 +225,12 @@ def restore(file, output, workspace):
     default="",
     help="Audit reason for --force-reanonymize.",
 )
-def shield_clipboard_cmd(workspace, score_threshold, force_reanonymize, reason):
-    """Anonymize current clipboard contents in place."""
+def shield_clipboard_cmd(workspace, score_threshold, language, force_reanonymize, reason):
+    """Anonymize current clipboard contents in place.
+
+    Example:
+        cowork-shield shield-clipboard -w client-a --language he
+    """
     try:
         if force_reanonymize and not reason.strip():
             raise click.UsageError(
@@ -223,6 +243,7 @@ def shield_clipboard_cmd(workspace, score_threshold, force_reanonymize, reason):
         result = shield_clipboard(
             ctx,
             score_threshold=score_threshold,
+            language=language.lower(),
             force_reanonymize=force_reanonymize,
             override_reason=reason,
             override_user=getpass.getuser(),
