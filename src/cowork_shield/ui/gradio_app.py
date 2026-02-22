@@ -7,7 +7,13 @@ from pathlib import Path
 import gradio as gr
 
 from cowork_shield.exceptions import CoWorkShieldError
-from cowork_shield.pipeline import anonymize_file, get_workspaces, restore_file, sanitize_ui_error
+from cowork_shield.pipeline import (
+    anonymize_file,
+    get_file_columns,
+    get_workspaces,
+    restore_file,
+    sanitize_ui_error,
+)
 
 
 def _workspace_choices() -> list[str]:
@@ -25,11 +31,27 @@ def _refresh_workspace_dropdown():
     return gr.Dropdown(choices=choices, value=value)
 
 
+def _refresh_column_dropdown(uploaded_file):
+    if uploaded_file is None:
+        return gr.Dropdown(choices=[], value=None)
+
+    input_path = Path(uploaded_file.name)
+    try:
+        columns = get_file_columns(input_path)
+    except (CoWorkShieldError, OSError):
+        return gr.Dropdown(choices=[], value=None)
+
+    choices = [(column["label"], column["name"]) for column in columns]
+    return gr.Dropdown(choices=choices, value=None)
+
+
 def shield(
     uploaded_file,
     workspace,
     language,
     pdf_output_format,
+    selected_columns,
+    detect_pii,
     allow_lossy_xlsx,
     force_reanonymize,
     override_reason,
@@ -56,6 +78,8 @@ def shield(
     workspace_name = _normalize_workspace(workspace)
     language_value = (language or "auto").strip().lower() or "auto"
     input_path = Path(uploaded_file.name)
+    selected = [str(item).strip() for item in (selected_columns or []) if str(item).strip()]
+    effective_detect_pii = bool(detect_pii) if selected else True
 
     try:
         result = anonymize_file(
@@ -63,6 +87,8 @@ def shield(
             workspace_name,
             language=language_value,
             pdf_output_format=(pdf_output_format or "md").strip().lower(),
+            columns=selected,
+            detect_pii=effective_detect_pii,
             allow_lossy_xlsx=bool(allow_lossy_xlsx),
             force_reanonymize=bool(force_reanonymize),
             reason=reason,
@@ -120,6 +146,17 @@ def create_demo() -> gr.Blocks:
                 value="auto",
                 label="Detection Language",
             )
+            column_selector = gr.Dropdown(
+                choices=[],
+                value=None,
+                multiselect=True,
+                label="Columns to anonymize (CSV/XLSX only)",
+                info="Select columns by header name for column-selective anonymization.",
+            )
+            detect_pii = gr.Checkbox(
+                label="Run PII detection on non-selected columns (--detect-pii)",
+                value=False,
+            )
             pdf_output_format = gr.Dropdown(
                 choices=["md", "docx"],
                 value="md",
@@ -148,6 +185,11 @@ def create_demo() -> gr.Blocks:
             shield_entity_table = gr.HTML(label="Detected Entities")
             shield_status = gr.Textbox(label="Status", interactive=False)
 
+            shield_file.change(
+                fn=_refresh_column_dropdown,
+                inputs=[shield_file],
+                outputs=[column_selector],
+            )
             shield_btn.click(
                 fn=shield,
                 inputs=[
@@ -155,6 +197,8 @@ def create_demo() -> gr.Blocks:
                     shield_workspace,
                     shield_language,
                     pdf_output_format,
+                    column_selector,
+                    detect_pii,
                     allow_lossy_xlsx,
                     force_reanonymize,
                     override_reason,

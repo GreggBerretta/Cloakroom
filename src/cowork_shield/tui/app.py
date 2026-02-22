@@ -8,11 +8,22 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Button, Checkbox, DataTable, Footer, Header, Input, Select, Static
+from textual.widgets import (
+    Button,
+    Checkbox,
+    DataTable,
+    Footer,
+    Header,
+    Input,
+    Select,
+    SelectionList,
+    Static,
+)
 
 from cowork_shield.exceptions import CoWorkShieldError
 from cowork_shield.pipeline import (
     anonymize_file,
+    get_file_columns,
     get_workspaces,
     preview_entities,
     restore_file,
@@ -89,6 +100,7 @@ class CoWorkShieldApp(App[None]):
         Binding("p", "preview", "Preview"),
         Binding("a", "anonymize", "Anonymize"),
         Binding("r", "restore", "Restore"),
+        Binding("c", "load_columns", "Load Columns"),
         Binding("w", "refresh_workspaces", "Refresh Workspaces"),
     ]
 
@@ -103,6 +115,13 @@ class CoWorkShieldApp(App[None]):
                 allow_blank=False,
             )
             yield Input(placeholder="Path to file (PDF/CSV/XLSX/DOCX/TXT/MD)", id="file_path")
+            yield Static("Column Selection (CSV/XLSX only)")
+            yield SelectionList[str](id="columns")
+            yield Checkbox(
+                "Run PII detection on non-selected columns (--detect-pii)",
+                id="detect_pii",
+                value=False,
+            )
             yield Static("PDF Output Format (input-only PDF pipeline)")
             yield Select(
                 [("Markdown (.md)", "md"), ("Word (.docx)", "docx")],
@@ -128,6 +147,7 @@ class CoWorkShieldApp(App[None]):
             )
             with Horizontal():
                 yield Button("Preview", id="preview", variant="default")
+                yield Button("Load Columns", id="load_columns", variant="default")
                 yield Button("Anonymize", id="anonymize", variant="primary")
                 yield Button("Restore", id="restore", variant="success")
                 yield Button("Refresh Workspaces", id="refresh", variant="warning")
@@ -148,6 +168,7 @@ class CoWorkShieldApp(App[None]):
 
         actions = {
             "preview": self.action_preview,
+            "load_columns": self.action_load_columns,
             "restore": self.action_restore,
             "refresh": self.action_refresh_workspaces,
         }
@@ -159,6 +180,14 @@ class CoWorkShieldApp(App[None]):
         path = self._selected_file()
         if path is None:
             return
+        selected_columns = self._selected_columns()
+        detect_pii = self.query_one("#detect_pii", Checkbox).value
+        if selected_columns and not detect_pii:
+            self._set_table_rows([])
+            self._set_status(
+                "Preview skipped in column-only mode. Enable detect PII to preview entities."
+            )
+            return
         try:
             rows = preview_entities(path, language=self._selected_language())
             self._set_table_rows(rows)
@@ -167,6 +196,35 @@ class CoWorkShieldApp(App[None]):
             code, message = sanitize_ui_error(exc)
             self._set_status(f"Preview failed [{code}]: {message}")
 
+    def action_load_columns(self) -> None:
+        path = self._selected_file()
+        if path is None:
+            return
+        try:
+            columns = get_file_columns(path)
+        except (CoWorkShieldError, OSError) as exc:
+            code, message = sanitize_ui_error(exc)
+            self._set_status(f"Column load failed [{code}]: {message}")
+            return
+
+        selection = self.query_one("#columns", SelectionList)
+        if not columns:
+            selection.clear_options()
+            self._set_status("No selectable columns found (CSV/XLSX only).")
+            return
+
+        selection.set_options(
+            [
+                (
+                    column["label"],
+                    column["name"],
+                    False,
+                )
+                for column in columns
+            ]
+        )
+        self._set_status(f"Loaded {len(columns)} columns. Select one or more for anonymization.")
+
     async def action_anonymize(self) -> None:
         path = self._selected_file()
         if path is None:
@@ -174,6 +232,9 @@ class CoWorkShieldApp(App[None]):
         workspace = self._selected_workspace()
         language = self._selected_language()
         pdf_output_format = self._selected_pdf_output_format()
+        selected_columns = self._selected_columns()
+        detect_pii = self.query_one("#detect_pii", Checkbox).value
+        effective_detect_pii = detect_pii if selected_columns else True
         allow_lossy_xlsx = self.query_one("#allow_lossy_xlsx", Checkbox).value
         force_reanonymize = self.query_one("#force_reanonymize", Checkbox).value
         override_reason = (self.query_one("#override_reason", Input).value or "").strip()
@@ -201,6 +262,8 @@ class CoWorkShieldApp(App[None]):
                 workspace,
                 language=language,
                 pdf_output_format=pdf_output_format,
+                columns=selected_columns,
+                detect_pii=effective_detect_pii,
                 allow_lossy_xlsx=allow_lossy_xlsx,
                 force_reanonymize=force_reanonymize,
                 reason=override_reason,
@@ -228,6 +291,10 @@ class CoWorkShieldApp(App[None]):
         select.set_options(self._workspace_options())
         current = self._selected_workspace()
         self._set_status(f"Workspace list refreshed. Current: {current}")
+
+    def _selected_columns(self) -> list[str]:
+        selection = self.query_one("#columns", SelectionList)
+        return [str(value) for value in selection.selected]
 
     def _selected_workspace(self) -> str:
         select = self.query_one("#workspace", Select)

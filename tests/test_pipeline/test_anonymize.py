@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from cowork_shield.exceptions import UnsupportedFormatError
+from cowork_shield.exceptions import ColumnSelectionError, UnsupportedFormatError
 from cowork_shield.extractors.pdf_markdown import PDFExtractionResult
 from cowork_shield.models import VaultData, now_iso
 from cowork_shield.handlers import pdf_handler
@@ -187,3 +187,42 @@ class TestAnonymizePipeline:
         result = pipeline.run(input_path)
 
         assert result.output_path.name == "data.anonymized.csv"
+
+    def test_column_only_csv_mode(self, workspace_ctx, tmp_path):
+        pipeline = AnonymizePipeline(
+            workspace_ctx,
+            score_threshold=0.5,
+            selected_columns=["Name", "Email"],
+            detect_pii=False,
+        )
+        output_path = tmp_path / "column_only.csv"
+
+        result = pipeline.run(FIXTURES_DIR / "sample_data.csv", output_path)
+
+        assert result.output_path.exists()
+        content = result.output_path.read_text(encoding="utf-8-sig")
+        assert "[NAME_00001]" in content
+        assert "[EMAIL_00001]" in content
+        assert "123-45-6789" in content
+
+    def test_columns_rejected_for_non_spreadsheet(self, workspace_ctx, tmp_path):
+        source = tmp_path / "notes.txt"
+        source.write_text("John Smith", encoding="utf-8")
+        pipeline = AnonymizePipeline(
+            workspace_ctx,
+            selected_columns=["A"],
+            detect_pii=False,
+        )
+
+        with pytest.raises(ColumnSelectionError):
+            pipeline.run(source, tmp_path / "notes.anonymized.txt")
+
+    def test_spreadsheet_requires_columns_or_detection(self, workspace_ctx, tmp_path):
+        pipeline = AnonymizePipeline(
+            workspace_ctx,
+            selected_columns=[],
+            detect_pii=False,
+        )
+
+        with pytest.raises(ColumnSelectionError):
+            pipeline.run(FIXTURES_DIR / "sample_data.csv", tmp_path / "invalid.csv")

@@ -8,7 +8,7 @@ from difflib import get_close_matches
 from cowork_shield.models import HallucinationFlag
 
 TOKEN_SHAPED_PATTERN = re.compile(
-    r"(?:\[[A-Z_]+_\d{5}\]|\b[A-Z_]+_\d{3,5}\b)"
+    r"(?:\[[A-Z0-9_]+_\d{5}\]|\b[A-Z0-9_]+_\d{3,5}\b)"
 )
 
 

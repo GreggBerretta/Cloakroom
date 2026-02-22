@@ -123,3 +123,7 @@ class PdfInputOnlyError(CoWorkShieldError):
             "PDF is input-only. Restore from tokenized Markdown (.md) or DOCX (.docx), "
             "not from .pdf."
         )
+
+
+class ColumnSelectionError(CoWorkShieldError):
+    """Column selection is invalid for the current file."""

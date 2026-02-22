@@ -35,9 +35,15 @@ This document is intended to be sufficient for another engineer to continue with
 - Hebrew enhancement backends are implemented (`spacy`, `stanza`, `transformers`) with GolemPII model override support.
 - PDF support is implemented as input-only (PDF -> extracted Markdown/DOCX -> anonymize/restore on text outputs).
 - Direct PDF restore is explicitly blocked with fail-closed error messaging.
+- Column-selective spreadsheet anonymization is implemented for CSV/XLSX.
+- Column selection supports letters (`A,C,F`) and header names (`"Client Name,Deal ID"`).
+- `inspect-columns` command is implemented for preflight selector discovery.
+- Column-only mode and combined mode (`--detect-pii`) are both supported.
+- TUI and Gradio now expose spreadsheet column selection workflows.
+- Column inspection now surfaces lightweight type hints and sample values for safer selection.
 
 ### Validation
-- Full test suite: **196 passed**.
+- Full test suite: **226 passed**.
 - EC-15 suite: **14 passed**.
 - Fork-only bootstrap validation (Feb 22, 2026):
   - `en_core_web_lg` installed in local fork clone.
@@ -88,6 +94,8 @@ This document is intended to be sufficient for another engineer to continue with
 ## 4) Command Surface (Current)
 ### Core Commands
 - `cowork-shield anonymize FILE -w WORKSPACE`
+- `cowork-shield anonymize FILE -w WORKSPACE --columns ...`
+- `cowork-shield inspect-columns FILE`
 - `cowork-shield restore FILE -w WORKSPACE`
 - `cowork-shield shield-clipboard -w WORKSPACE`
 - `cowork-shield restore-clipboard -w WORKSPACE`
@@ -103,6 +111,8 @@ This document is intended to be sufficient for another engineer to continue with
 - `cowork-shield workspace import-key --workspace NAME --input FILE`
 
 ### Important Flags
+- `--columns A,C,F` or `--columns "Name,Deal ID"` (CSV/XLSX column-selective anonymization)
+- `--detect-pii` (combine Presidio with selected columns)
 - `--force-reanonymize --reason "..."` (audited override)
 - `--allow-lossy-xlsx` (explicit XLSX lossy-content acknowledgment)
 - `--pdf-output-format md|docx` (required choice when input is PDF)
@@ -184,7 +194,7 @@ This document is intended to be sufficient for another engineer to continue with
 ## 10) Go/No-Go Matrix (Current)
 | Criterion | Status | Evidence |
 | --- | --- | --- |
-| Full Test Suite | ✅ | `196 passed` |
+| Full Test Suite | ✅ | `226 passed` |
 | Fork-Only English Bootstrap | ✅ | `en_core_web_lg` installed; detection + EC-15 smoke = `29 passed` |
 | Fork-Only Full Suite Prereq | ⚠️ | Hebrew model still required for full suite (`he_core_news_sm` or fallback) |
 | EC-15 State Integrity | ✅ | `14 passed` |

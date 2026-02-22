@@ -115,3 +115,18 @@ class TestTokenGenerator:
         mapping = self.gen.get_mapping("[PERSON_00001]")
         assert "a.xlsx" in mapping.source_files
         assert "b.docx" in mapping.source_files
+
+    def test_column_tokens_use_custom_prefix(self):
+        token = self.gen.get_or_create_column_token("DEAL-001", "DEALID")
+        assert token.token_text == "[DEALID_00001]"
+        assert token.entity_type == EntityType.COLUMN
+
+    def test_column_tokens_deterministic_within_prefix(self):
+        t1 = self.gen.get_or_create_column_token("DEAL-001", "DEALID")
+        t2 = self.gen.get_or_create_column_token("DEAL-001", "DEALID")
+        assert t1.token_text == t2.token_text
+
+    def test_column_tokens_scoped_by_prefix(self):
+        t1 = self.gen.get_or_create_column_token("123", "COL_A")
+        t2 = self.gen.get_or_create_column_token("123", "COL_B")
+        assert t1.token_text != t2.token_text

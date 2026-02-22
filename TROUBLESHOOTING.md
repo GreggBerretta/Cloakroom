@@ -13,6 +13,7 @@ Common examples:
 - `ReplayMismatchError`: deterministic replay mismatch
 - `ModelHashMismatchError`: model lock mismatch
 - `HallucinationDetectedError`: mutated/hallucinated/dropped token detected
+- `ColumnSelectionError`: invalid/missing spreadsheet column selection
 - `WorkspaceExpiredError`: workspace TTL elapsed
 - `RecoveryKeyError`: bad or wrong-passphrase recovery key payload
 - `WorkspaceNotFoundError`: workspace metadata/key not found
@@ -47,6 +48,23 @@ Do not share:
 
 If restore failure involves anonymized output (tokenized only), file sharing is generally acceptable.
 If anonymization failure involves live data, manually redact first.
+
+## 2a) Column Selection Errors (CSV/XLSX)
+Typical causes:
+- Column name typo
+- Letter out of range (for example `--columns Z` on a 5-column sheet)
+- `--columns` used on non-spreadsheet file types
+- Spreadsheet anonymize run with `--no-detect-pii` and no `--columns`
+
+Quick checks:
+```bash
+uv run cowork-shield inspect-columns <file.csv|file.xlsx>
+```
+
+If you need combined behavior:
+```bash
+uv run cowork-shield anonymize <file.xlsx> --columns "Deal ID,Client Name" --detect-pii
+```
 
 ## 3) Keychain / Recovery Failures
 Symptom:
@@ -107,6 +125,9 @@ If port is in use, launch manually with a custom port:
 ```bash
 uv run python -c "from cowork_shield.ui.gradio_app import create_demo; create_demo().launch(server_name='127.0.0.1', server_port=7861)"
 ```
+If spreadsheet columns do not appear:
+- Re-upload the file to trigger column refresh.
+- Confirm file extension is `.csv` or `.xlsx`.
 
 ## 7) PDF Extraction Issues
 PDF behavior:

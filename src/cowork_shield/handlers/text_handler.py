@@ -29,7 +29,10 @@ class TextHandler:
         token_generator: TokenGenerator,
         source_file: str = "",
         language: str = "auto",
+        selected_columns: list[str] | None = None,
+        detect_pii: bool = True,
     ) -> tuple[list[ReplacementRecord], FileRecord]:
+        del selected_columns, detect_pii
         text = input_path.read_text(encoding="utf-8", errors="replace")
         entities = _detect_entities(
             detection_engine,

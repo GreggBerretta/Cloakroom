@@ -31,6 +31,8 @@ class FileHandler(Protocol):
         token_generator: TokenGenerator,
         source_file: str,
         language: str = "auto",
+        selected_columns: list[str] | None = None,
+        detect_pii: bool = True,
     ) -> tuple[list[ReplacementRecord], FileRecord]:
         """Anonymize a file. Returns replacement records and file metadata."""
         ...

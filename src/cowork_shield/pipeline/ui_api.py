@@ -8,6 +8,7 @@ from pathlib import Path
 
 from cowork_shield.detection.engine import DetectionEngine
 from cowork_shield.exceptions import (
+    ColumnSelectionError,
     DetectionError,
     HallucinationDetectedError,
     IncompleteRestorationError,
@@ -23,6 +24,7 @@ from cowork_shield.exceptions import (
     XLSXContentLossRiskError,
 )
 from cowork_shield.pipeline.anonymize import AnonymizePipeline
+from cowork_shield.pipeline.columns import inspect_columns
 from cowork_shield.pipeline.restore import RestorePipeline
 from cowork_shield.workspace.manager import WorkspaceManager
 
@@ -43,6 +45,8 @@ def sanitize_ui_error(exc: Exception) -> tuple[str, str]:
 
     if isinstance(exc, UnsupportedFormatError):
         return code, "Unsupported format. Use PDF, CSV, XLSX, DOCX, TXT, or MD."
+    if isinstance(exc, ColumnSelectionError):
+        return code, str(exc)
     if isinstance(exc, PdfExtractionError):
         return code, "PDF extraction failed. Install Docling or PyMuPDF and retry."
     if isinstance(exc, PdfInputOnlyError):
@@ -124,6 +128,8 @@ def anonymize_file(
     language: str = "auto",
     allow_lossy_xlsx: bool = False,
     pdf_output_format: str = "md",
+    columns: str | list[str] | None = None,
+    detect_pii: bool | None = None,
     force_reanonymize: bool = False,
     reason: str = "",
 ) -> UIOperationResult:
@@ -133,11 +139,16 @@ def anonymize_file(
 
     input_path = Path(file_path).expanduser().resolve()
     out_path = Path(output_path).expanduser().resolve() if output_path else None
-    entity_rows = preview_entities(
-        input_path,
-        score_threshold=score_threshold,
-        language=language,
-    )
+    selected_columns = _normalize_columns(columns)
+    effective_detect_pii = detect_pii if detect_pii is not None else (not bool(selected_columns))
+
+    entity_rows: list[dict[str, str]] = []
+    if effective_detect_pii:
+        entity_rows = preview_entities(
+            input_path,
+            score_threshold=score_threshold,
+            language=language,
+        )
 
     pipeline = AnonymizePipeline(
         ctx,
@@ -148,6 +159,8 @@ def anonymize_file(
         override_user="ui",
         allow_lossy_xlsx=allow_lossy_xlsx,
         pdf_output_format=pdf_output_format,
+        selected_columns=selected_columns,
+        detect_pii=detect_pii,
     )
     result = pipeline.run(input_path, out_path)
 
@@ -160,6 +173,10 @@ def anonymize_file(
             " PDF is input-only: output is extracted Markdown/DOCX; "
             "the original PDF binary is not reconstructed."
         )
+    if selected_columns:
+        summary += f" Columns: {', '.join(selected_columns)}."
+        if not effective_detect_pii:
+            summary += " Detection: column-only."
     return UIOperationResult(
         path=str(result.output_path),
         summary=summary,
@@ -261,3 +278,34 @@ def _read_supported_text(path: Path) -> str:
         return "\n".join(parts)
 
     raise UnsupportedFormatError(suffix)
+
+
+def get_file_columns(file_path: str | Path) -> list[dict[str, str]]:
+    """Return column metadata for CSV/XLSX selection UIs."""
+    columns = inspect_columns(file_path)
+    return [
+        {
+            "index": str(column.index),
+            "letter": column.letter,
+            "name": column.name,
+            "data_type": column.data_type,
+            "sample": " | ".join(column.sample_values),
+            "label": (
+                f"{column.letter}: {column.name} [{column.data_type}]"
+                + (
+                    f" (e.g. {' | '.join(column.sample_values)})"
+                    if column.sample_values
+                    else ""
+                )
+            ),
+        }
+        for column in columns
+    ]
+
+
+def _normalize_columns(columns: str | list[str] | None) -> list[str]:
+    if columns is None:
+        return []
+    if isinstance(columns, str):
+        return [part.strip() for part in columns.split(",") if part.strip()]
+    return [str(part).strip() for part in columns if str(part).strip()]

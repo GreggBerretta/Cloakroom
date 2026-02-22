@@ -1,11 +1,10 @@
 """Tests for the integrity verifier."""
 
 import os
-from pathlib import Path
 
 import pytest
 
-from cowork_shield.models import EntityMapping, EntityType, Token, now_iso
+from cowork_shield.models import EntityMapping, EntityType, Token
 from cowork_shield.tokenizer.generator import TokenGenerator
 from cowork_shield.verification.verifier import IntegrityVerifier, compute_sha256
 

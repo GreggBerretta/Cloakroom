@@ -6,8 +6,11 @@ import re
 
 from cowork_shield.models import EntityType
 
-# Presidio entity type strings we actively detect
-SUPPORTED_PRESIDIO_ENTITIES: list[str] = [member.value for member in EntityType]
+# Presidio entity type strings we actively detect.
+# COLUMN is internal-only and must never be requested from Presidio.
+SUPPORTED_PRESIDIO_ENTITIES: list[str] = [
+    member.value for member in EntityType if member != EntityType.COLUMN
+]
 
 
 def normalize_entity_value(value: str, entity_type: EntityType) -> str:

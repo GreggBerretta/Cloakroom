@@ -15,8 +15,10 @@ from cowork_shield.clipboard.operations import (
     shield_clipboard,
 )
 from cowork_shield.detection.engine import HEBREW_BACKEND_CHOICES, LANGUAGE_CHOICES
+from cowork_shield.handlers.column_select import parse_columns_option
 from cowork_shield.exceptions import CoWorkShieldError
 from cowork_shield.pipeline.anonymize import AnonymizePipeline
+from cowork_shield.pipeline.columns import inspect_columns
 from cowork_shield.pipeline.restore import RestorePipeline
 from cowork_shield.vault.keychain import get_master_key, store_master_key
 from cowork_shield.vault.recovery import (
@@ -107,6 +109,20 @@ def main():
     help="Output format when input file is PDF (PDF is input-only).",
 )
 @click.option(
+    "--columns",
+    type=str,
+    default="",
+    help='Comma-separated spreadsheet columns (letters or names). Example: A,C,F or "Client Name,Deal ID".',
+)
+@click.option(
+    "--detect-pii/--no-detect-pii",
+    default=None,
+    help=(
+        "Run Presidio detection in addition to selected columns. "
+        "Default: true when --columns is empty; false when --columns is provided."
+    ),
+)
+@click.option(
     "--force-reanonymize",
     is_flag=True,
     help="Override deterministic/model lock checks (requires --reason).",
@@ -129,6 +145,8 @@ def anonymize(
     hebrew_transformer_model,
     allow_lossy_xlsx,
     pdf_output_format,
+    columns,
+    detect_pii,
     force_reanonymize,
     reason,
 ):
@@ -144,6 +162,8 @@ def anonymize(
         cowork-shield anonymize contract.docx -o contract.safe.docx
         cowork-shield anonymize notes.txt --language he
         cowork-shield anonymize intake.pdf --pdf-output-format md
+        cowork-shield anonymize deals.xlsx --columns "Deal ID,Client Name"
+        cowork-shield anonymize deals.csv --columns A,C --detect-pii
     """
     try:
         if force_reanonymize and not reason.strip():
@@ -156,6 +176,7 @@ def anonymize(
 
         input_path = Path(file)
         output_path = Path(output) if output else None
+        selected_columns = parse_columns_option(columns)
 
         pipeline = AnonymizePipeline(
             ctx,
@@ -169,7 +190,23 @@ def anonymize(
             override_user=getpass.getuser(),
             allow_lossy_xlsx=allow_lossy_xlsx,
             pdf_output_format=pdf_output_format.lower(),
+            selected_columns=selected_columns,
+            detect_pii=detect_pii,
         )
+
+        if input_path.suffix.lower() in {".csv", ".xlsx"} and not selected_columns:
+            try:
+                columns_info = inspect_columns(input_path)
+                if columns_info:
+                    console.print("[dim]Available columns:[/]")
+                    console.print(
+                        "[dim]"
+                        + ", ".join(f"{col.letter}:{col.name}" for col in columns_info)
+                        + "[/]"
+                    )
+            except CoWorkShieldError:
+                pass
+
         result = pipeline.run(input_path, output_path)
 
         console.print()
@@ -178,6 +215,10 @@ def anonymize(
         console.print(f"  Workspace: {result.workspace_name}")
         console.print(f"  Entities:  {result.entities_found} detected")
         console.print(f"  Tokens:    {result.tokens_applied} applied")
+        if selected_columns:
+            effective_detect = detect_pii if detect_pii is not None else False
+            mode = "column + pii" if effective_detect else "column-only"
+            console.print(f"  Columns:   {', '.join(selected_columns)} ({mode})")
         if force_reanonymize:
             console.print(f"  Override:  [yellow]ON[/] ({reason.strip()})")
         if result.backup_path:
@@ -189,6 +230,43 @@ def anonymize(
             )
         console.print()
 
+    except CoWorkShieldError as e:
+        _show_error(e)
+        raise SystemExit(1)
+
+
+@main.command("inspect-columns")
+@click.argument("file", type=click.Path(exists=True))
+def inspect_columns_cmd(file):
+    """Inspect selectable columns for CSV/XLSX files."""
+    try:
+        input_path = Path(file)
+        columns = inspect_columns(input_path)
+        if not columns:
+            console.print("[yellow]No columns found.[/]")
+            return
+
+        table = Table(title=f"Columns: {input_path.name}")
+        table.add_column("Index", style="cyan")
+        table.add_column("Letter", style="green")
+        table.add_column("Name", style="white")
+        table.add_column("Type", style="magenta")
+        table.add_column("Sample Values", style="dim")
+
+        for column in columns:
+            sample_text = " | ".join(column.sample_values) if column.sample_values else "-"
+            table.add_row(
+                str(column.index),
+                column.letter,
+                column.name,
+                column.data_type,
+                sample_text,
+            )
+
+        console.print(table)
+        console.print(
+            '[dim]Use --columns with letters or names, e.g. --columns A,C or --columns "Client Name,Deal ID".[/]'
+        )
     except CoWorkShieldError as e:
         _show_error(e)
         raise SystemExit(1)

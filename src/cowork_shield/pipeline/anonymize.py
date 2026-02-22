@@ -8,6 +8,7 @@ from pathlib import Path
 
 from cowork_shield.detection.engine import DetectionEngine
 from cowork_shield.exceptions import (
+    ColumnSelectionError,
     CoWorkShieldError,
     ModelHashMismatchError,
     ReplayMismatchError,
@@ -62,6 +63,8 @@ class AnonymizePipeline:
         override_user: str = "",
         allow_lossy_xlsx: bool = False,
         pdf_output_format: str = "md",
+        selected_columns: list[str] | None = None,
+        detect_pii: bool | None = None,
     ):
         self._ctx = workspace_ctx
         self._clock = clock or SystemClock()
@@ -77,6 +80,11 @@ class AnonymizePipeline:
         self._override_user = override_user.strip()
         self._allow_lossy_xlsx = allow_lossy_xlsx
         self._pdf_output_format = (pdf_output_format or "md").strip().lower()
+        self._selected_columns = [col.strip() for col in (selected_columns or []) if col.strip()]
+        if detect_pii is None:
+            self._detect_pii = not bool(self._selected_columns)
+        else:
+            self._detect_pii = bool(detect_pii)
 
         if self._force_reanonymize and not self._override_reason:
             raise CoWorkShieldError(
@@ -97,6 +105,15 @@ class AnonymizePipeline:
             handler_cls = HANDLER_MAP.get(suffix)
             if handler_cls is None:
                 raise UnsupportedFormatError(suffix)
+
+            if self._selected_columns and suffix not in {".csv", ".xlsx"}:
+                raise ColumnSelectionError(
+                    "--columns is supported only for CSV/XLSX inputs."
+                )
+            if suffix in {".csv", ".xlsx"} and not self._detect_pii and not self._selected_columns:
+                raise ColumnSelectionError(
+                    "No anonymization mode selected. Provide --columns or enable --detect-pii."
+                )
 
             if suffix == ".xlsx":
                 handler = handler_cls(allow_lossy_xlsx=self._allow_lossy_xlsx)
@@ -158,6 +175,8 @@ class AnonymizePipeline:
                     self._ctx.token_generator,
                     source_file=input_path.name,
                     language=self._language,
+                    selected_columns=self._selected_columns,
+                    detect_pii=self._detect_pii,
                 )
             except Exception:
                 self._ctx.token_generator.load_state(counters_snapshot, mappings_snapshot)

@@ -7,7 +7,7 @@ import pytest
 from openpyxl import load_workbook
 
 from cowork_shield.detection.engine import DetectionEngine
-from cowork_shield.exceptions import XLSXContentLossRiskError
+from cowork_shield.exceptions import ColumnSelectionError, XLSXContentLossRiskError
 from cowork_shield.handlers.xlsx import XlsxHandler
 from cowork_shield.tokenizer.generator import TokenGenerator
 
@@ -148,3 +148,152 @@ class TestXlsxHandler:
 
         handler.anonymize(input_path, output_path, detection_engine, token_generator)
         assert output_path.exists()
+
+    def test_inspect_columns(self):
+        handler = XlsxHandler()
+        columns = handler.inspect_columns(FIXTURES_DIR / "sample_contacts.xlsx")
+        assert len(columns) >= 4
+        assert columns[0].letter == "A"
+        assert columns[0].name.lower() in {"name", "full name"}
+        assert columns[0].data_type == "text"
+        assert columns[0].sample_values
+
+    def test_column_mode_by_letter(self, tmp_path, detection_engine, token_generator):
+        handler = XlsxHandler()
+        input_path = FIXTURES_DIR / "sample_contacts.xlsx"
+        output_path = tmp_path / "column_only.xlsx"
+
+        handler.anonymize(
+            input_path,
+            output_path,
+            detection_engine,
+            token_generator,
+            selected_columns=["A"],
+            detect_pii=False,
+        )
+
+        wb = load_workbook(str(output_path), data_only=False)
+        ws = wb.active
+        assert isinstance(ws["A2"].value, str)
+        assert ws["A2"].value.startswith("[COL_A_")
+        # Non-selected column should remain plaintext when detect_pii is false.
+        assert ws["B2"].value is not None
+        wb.close()
+
+    def test_column_mode_by_name_prefix(self, tmp_path, detection_engine, token_generator):
+        handler = XlsxHandler()
+        input_path = FIXTURES_DIR / "sample_contacts.xlsx"
+        output_path = tmp_path / "column_name.xlsx"
+
+        handler.anonymize(
+            input_path,
+            output_path,
+            detection_engine,
+            token_generator,
+            selected_columns=["Name"],
+            detect_pii=False,
+        )
+
+        wb = load_workbook(str(output_path), data_only=False)
+        ws = wb.active
+        assert isinstance(ws["A2"].value, str)
+        assert ws["A2"].value.startswith("[NAME_")
+        wb.close()
+
+    def test_column_mode_skips_formula_cells(
+        self,
+        tmp_path,
+        detection_engine,
+        token_generator,
+    ):
+        handler = XlsxHandler()
+        input_path = FIXTURES_DIR / "sample_financial.xlsx"
+        output_path = tmp_path / "formula_column.xlsx"
+
+        handler.anonymize(
+            input_path,
+            output_path,
+            detection_engine,
+            token_generator,
+            selected_columns=["F"],
+            detect_pii=False,
+        )
+
+        wb = load_workbook(str(output_path), data_only=False)
+        ws = wb.active
+        assert ws["F2"].value == "=SUM(B2:E2)"
+        assert ws["F3"].value == "=SUM(B3:E3)"
+        wb.close()
+
+    def test_column_mode_with_detect_pii_enabled(
+        self,
+        tmp_path,
+        detection_engine,
+        token_generator,
+    ):
+        handler = XlsxHandler()
+        input_path = FIXTURES_DIR / "sample_contacts.xlsx"
+        output_path = tmp_path / "column_plus_pii.xlsx"
+
+        handler.anonymize(
+            input_path,
+            output_path,
+            detection_engine,
+            token_generator,
+            selected_columns=["A"],
+            detect_pii=True,
+        )
+
+        wb = load_workbook(str(output_path), data_only=False)
+        ws = wb.active
+        assert isinstance(ws["A2"].value, str)
+        assert ws["A2"].value.startswith("[COL_A_")
+        # Email/phone columns should be tokenized by PII detection in combined mode.
+        row_text = " ".join(str(ws[f"{col}2"].value or "") for col in ("B", "C", "D"))
+        assert "[" in row_text
+        wb.close()
+
+    def test_invalid_column_selection_raises(
+        self,
+        tmp_path,
+        detection_engine,
+        token_generator,
+    ):
+        handler = XlsxHandler()
+        with pytest.raises(ColumnSelectionError):
+            handler.anonymize(
+                FIXTURES_DIR / "sample_contacts.xlsx",
+                tmp_path / "invalid.xlsx",
+                detection_engine,
+                token_generator,
+                selected_columns=["Missing Column"],
+                detect_pii=False,
+            )
+
+    def test_column_mode_round_trip(self, tmp_path, detection_engine, token_generator):
+        handler = XlsxHandler()
+        input_path = FIXTURES_DIR / "sample_contacts.xlsx"
+        anonymized_path = tmp_path / "column_roundtrip.anonymized.xlsx"
+        restored_path = tmp_path / "column_roundtrip.restored.xlsx"
+
+        handler.anonymize(
+            input_path,
+            anonymized_path,
+            detection_engine,
+            token_generator,
+            selected_columns=["A", "C"],
+            detect_pii=False,
+        )
+        handler.restore(anonymized_path, restored_path, token_generator.get_reverse_lookup())
+
+        wb_orig = load_workbook(str(input_path), data_only=False)
+        wb_rest = load_workbook(str(restored_path), data_only=False)
+        for sheet_name in wb_orig.sheetnames:
+            ws_orig = wb_orig[sheet_name]
+            ws_rest = wb_rest[sheet_name]
+            for row_orig, row_rest in zip(ws_orig.iter_rows(), ws_rest.iter_rows()):
+                for cell_orig, cell_rest in zip(row_orig, row_rest):
+                    if cell_orig.value is not None:
+                        assert cell_rest.value == cell_orig.value
+        wb_orig.close()
+        wb_rest.close()

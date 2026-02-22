@@ -1,9 +1,13 @@
 """Tests for the CLI interface."""
 
+from pathlib import Path
+
 import pytest
 from click.testing import CliRunner
 
 from cowork_shield.cli import main
+
+FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 
 @pytest.fixture
@@ -21,6 +25,7 @@ class TestCli:
         result = runner.invoke(main, ["--help"])
         assert result.exit_code == 0
         assert "anonymize" in result.output
+        assert "inspect-columns" in result.output
         assert "restore" in result.output
         assert "shield-clipboard" in result.output
         assert "restore-clipboard" in result.output
@@ -32,6 +37,8 @@ class TestCli:
         assert "--workspace" in result.output
         assert "--ttl" in result.output
         assert "--score-threshold" in result.output
+        assert "--columns" in result.output
+        assert "--detect-pii" in result.output
 
     def test_restore_help(self, runner):
         result = runner.invoke(main, ["restore", "--help"])
@@ -63,6 +70,13 @@ class TestCli:
         result = runner.invoke(main, ["restore-clipboard", "--help"])
         assert result.exit_code == 0
         assert "--workspace" in result.output
+
+    def test_inspect_columns(self, runner):
+        result = runner.invoke(main, ["inspect-columns", str(FIXTURES_DIR / "sample_data.csv")])
+        assert result.exit_code == 0
+        assert "Columns: sample_data.csv" in result.output
+        assert "A" in result.output
+        assert "Name" in result.output
 
     def test_anonymize_nonexistent_file(self, runner):
         result = runner.invoke(main, ["anonymize", "/nonexistent/file.csv"])

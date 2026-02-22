@@ -42,7 +42,10 @@ class DocxHandler:
         token_generator: TokenGenerator,
         source_file: str = "",
         language: str = "auto",
+        selected_columns: list[str] | None = None,
+        detect_pii: bool = True,
     ) -> tuple[list[ReplacementRecord], FileRecord]:
+        del selected_columns, detect_pii
         doc = Document(str(input_path))
         all_records: list[ReplacementRecord] = []
         total_entities = 0

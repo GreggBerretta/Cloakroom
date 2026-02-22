@@ -21,6 +21,7 @@ class EntityType(str, Enum):
     DATE = "DATE_TIME"
     IP_ADDRESS = "IP_ADDRESS"
     URL = "URL"
+    COLUMN = "COLUMN"
 
     @property
     def token_prefix(self) -> str:
@@ -36,6 +37,7 @@ class EntityType(str, Enum):
             EntityType.DATE: "DATE",
             EntityType.IP_ADDRESS: "IP",
             EntityType.URL: "URL",
+            EntityType.COLUMN: "COL",
         }
         return _prefixes[self]
 

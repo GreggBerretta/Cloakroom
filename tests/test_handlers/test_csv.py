@@ -6,9 +6,9 @@ from pathlib import Path
 import pytest
 
 from cowork_shield.detection.engine import DetectionEngine
+from cowork_shield.exceptions import ColumnSelectionError
 from cowork_shield.handlers.csv_handler import CsvHandler
 from cowork_shield.tokenizer.generator import TokenGenerator
-from cowork_shield.tokenizer.replacer import TextReplacer
 
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
 
@@ -83,3 +83,125 @@ class TestCsvHandler:
         assert CsvHandler.can_handle(Path("data.csv"))
         assert CsvHandler.can_handle(Path("data.CSV"))
         assert not CsvHandler.can_handle(Path("data.xlsx"))
+
+    def test_inspect_columns(self):
+        handler = CsvHandler()
+        columns = handler.inspect_columns(FIXTURES_DIR / "sample_data.csv")
+        assert len(columns) == 5
+        assert columns[0].letter == "A"
+        assert columns[0].name == "Name"
+        assert columns[0].data_type == "text"
+        assert columns[0].sample_values
+        assert columns[3].letter == "D"
+        assert columns[3].name == "Amount"
+        assert columns[3].data_type in {"number", "mixed"}
+
+    def test_column_mode_by_letter_without_pii_detection(
+        self,
+        tmp_path,
+        detection_engine,
+        token_generator,
+    ):
+        handler = CsvHandler()
+        input_path = FIXTURES_DIR / "sample_data.csv"
+        output_path = tmp_path / "column_only.csv"
+
+        records, file_record = handler.anonymize(
+            input_path,
+            output_path,
+            detection_engine,
+            token_generator,
+            selected_columns=["A", "D"],
+            detect_pii=False,
+        )
+
+        content = output_path.read_text(encoding="utf-8-sig")
+        assert "[COL_A_00001]" in content
+        assert "[COL_D_00001]" in content
+        assert "123-45-6789" in content  # SSN column untouched in column-only mode.
+        assert file_record.tokens_applied == len(records)
+
+    def test_column_mode_by_name_prefix(
+        self,
+        tmp_path,
+        detection_engine,
+        token_generator,
+    ):
+        handler = CsvHandler()
+        input_path = FIXTURES_DIR / "sample_data.csv"
+        output_path = tmp_path / "column_by_name.csv"
+
+        handler.anonymize(
+            input_path,
+            output_path,
+            detection_engine,
+            token_generator,
+            selected_columns=["Name", "Email"],
+            detect_pii=False,
+        )
+
+        content = output_path.read_text(encoding="utf-8-sig")
+        assert "[NAME_00001]" in content
+        assert "[EMAIL_00001]" in content
+        assert "123-45-6789" in content
+
+    def test_column_mode_with_detect_pii_enabled(
+        self,
+        tmp_path,
+        detection_engine,
+        token_generator,
+    ):
+        handler = CsvHandler()
+        input_path = FIXTURES_DIR / "sample_data.csv"
+        output_path = tmp_path / "column_plus_pii.csv"
+
+        handler.anonymize(
+            input_path,
+            output_path,
+            detection_engine,
+            token_generator,
+            selected_columns=["A"],
+            detect_pii=True,
+        )
+
+        content = output_path.read_text(encoding="utf-8-sig")
+        assert "[COL_A_00001]" in content
+        # Non-selected columns still run through PII detection.
+        assert "SSN_" in content or "EMAIL_" in content
+
+    def test_invalid_column_selection_raises(
+        self,
+        tmp_path,
+        detection_engine,
+        token_generator,
+    ):
+        handler = CsvHandler()
+        with pytest.raises(ColumnSelectionError):
+            handler.anonymize(
+                FIXTURES_DIR / "sample_data.csv",
+                tmp_path / "invalid.csv",
+                detection_engine,
+                token_generator,
+                selected_columns=["Missing Column"],
+                detect_pii=False,
+            )
+
+    def test_column_mode_round_trip(self, tmp_path, detection_engine, token_generator):
+        handler = CsvHandler()
+        input_path = FIXTURES_DIR / "sample_data.csv"
+        anonymized_path = tmp_path / "column_roundtrip.anonymized.csv"
+        restored_path = tmp_path / "column_roundtrip.restored.csv"
+
+        handler.anonymize(
+            input_path,
+            anonymized_path,
+            detection_engine,
+            token_generator,
+            selected_columns=["Name", "Email"],
+            detect_pii=False,
+        )
+        handler.restore(anonymized_path, restored_path, token_generator.get_reverse_lookup())
+
+        assert restored_path.read_text(encoding="utf-8-sig") == input_path.read_text(
+            encoding="utf-8-sig"
+        )

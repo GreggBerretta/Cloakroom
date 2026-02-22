@@ -16,6 +16,8 @@ class TestGradioShieldGuardrails:
             "default",
             "auto",
             "md",
+            [],
+            False,
             False,
             True,
             "",
@@ -31,6 +33,8 @@ class TestGradioShieldGuardrails:
             "default",
             "auto",
             "md",
+            [],
+            False,
             True,
             False,
             "",
@@ -51,6 +55,8 @@ class TestGradioShieldGuardrails:
             "default",
             "auto",
             "md",
+            [],
+            False,
             False,
             False,
             "",
@@ -59,3 +65,21 @@ class TestGradioShieldGuardrails:
         assert output_file is None
         assert "IncompleteRestorationError" in status
         assert "PERSON_00001" not in status
+
+    def test_refresh_column_dropdown_uses_pipeline_columns(self, monkeypatch):
+        uploaded = SimpleNamespace(name="/tmp/fake.csv")
+
+        monkeypatch.setattr(
+            gradio_app,
+            "get_file_columns",
+            lambda _path: [
+                {"label": "A: Name [text] (e.g. Alice)", "name": "Name"},
+                {"label": "B: Deal ID [text] (e.g. DEAL-1)", "name": "Deal ID"},
+            ],
+        )
+
+        dropdown = gradio_app._refresh_column_dropdown(uploaded)
+        assert dropdown.choices == [
+            ("A: Name [text] (e.g. Alice)", "Name"),
+            ("B: Deal ID [text] (e.g. DEAL-1)", "Deal ID"),
+        ]

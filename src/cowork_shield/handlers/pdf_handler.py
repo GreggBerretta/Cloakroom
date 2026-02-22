@@ -40,7 +40,10 @@ class PdfHandler:
         token_generator: TokenGenerator,
         source_file: str = "",
         language: str = "auto",
+        selected_columns: list[str] | None = None,
+        detect_pii: bool = True,
     ) -> tuple[list[ReplacementRecord], FileRecord]:
+        del selected_columns, detect_pii
         extraction = self._extractor.extract(input_path)
         entities = _detect_entities(
             detection_engine,

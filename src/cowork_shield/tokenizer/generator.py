@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac as hmac_module
+import re
 
 from cowork_shield.detection.entity_types import make_mapping_key, normalize_entity_value
 from cowork_shield.models import Clock, EntityMapping, EntityType, SystemClock, Token
@@ -69,6 +70,47 @@ class TokenGenerator:
 
         return token
 
+    def get_or_create_column_token(
+        self,
+        original_value: str,
+        column_prefix: str,
+        source_file: str = "",
+    ) -> Token:
+        """Return existing token for a user-selected column value, or create one."""
+        normalized = normalize_entity_value(original_value, EntityType.COLUMN)
+        prefix = _normalize_column_prefix(column_prefix)
+        mapping_key = f"{EntityType.COLUMN.value}:{prefix}::{normalized}"
+
+        if mapping_key in self._registry:
+            mapping = self._registry[mapping_key]
+            if source_file and source_file not in mapping.source_files:
+                mapping.source_files.append(source_file)
+            return mapping.token
+
+        counter_key = f"{EntityType.COLUMN.token_prefix}:{prefix}"
+        counter = self._counters.get(counter_key, 0) + 1
+        self._counters[counter_key] = counter
+
+        token_text = f"[{prefix}_{counter:05d}]"
+        tag = compute_hmac(token_text, original_value, self._hmac_key)
+
+        token = Token(
+            token_text=token_text,
+            entity_type=EntityType.COLUMN,
+            hmac_tag=tag,
+        )
+
+        mapping = EntityMapping(
+            token=token,
+            original_value=original_value,
+            normalized_key=mapping_key,
+            entity_type=EntityType.COLUMN,
+            first_seen=self._clock.now_iso(),
+            source_files=[source_file] if source_file else [],
+        )
+        self._registry[mapping_key] = mapping
+        return token
+
     def get_mapping(self, token_text: str) -> EntityMapping | None:
         """Look up an entity mapping by its token text."""
         for mapping in self._registry.values():
@@ -103,3 +145,13 @@ class TokenGenerator:
     def export_state(self) -> tuple[dict[str, int], dict[str, EntityMapping]]:
         """Export current state for vault persistence."""
         return dict(self._counters), dict(self._registry)
+
+
+def _normalize_column_prefix(column_prefix: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9_]", "", (column_prefix or "").strip().upper())
+    cleaned = cleaned.strip("_")
+    if not cleaned:
+        return "COL"
+    if cleaned[0].isdigit():
+        cleaned = f"C{cleaned}"
+    return cleaned[:64]

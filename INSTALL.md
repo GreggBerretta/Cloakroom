@@ -61,6 +61,9 @@ uv run cowork-shield anonymize ./sample.txt -w client-a
 uv run cowork-shield restore ./sample.anonymized.txt -w client-a
 uv run cowork-shield anonymize ./hebrew.txt -w client-a --language he
 uv run cowork-shield anonymize ./brief.pdf -w client-a --pdf-output-format md
+uv run cowork-shield inspect-columns ./deals.xlsx
+uv run cowork-shield anonymize ./deals.xlsx -w client-a --columns "Deal ID,Client Name"
+uv run cowork-shield anonymize ./deals.csv -w client-a --columns A,C --detect-pii
 ```
 
 PDF note:
@@ -74,6 +77,13 @@ uv run cowork-shield workspace list
 uv run cowork-shield workspace show client-a
 ```
 
+Spreadsheet column-selective anonymization:
+- `--columns` accepts Excel letters or header names.
+- Default behavior with `--columns`: column-only mode (PII detection disabled unless `--detect-pii` is set).
+- `inspect-columns` shows valid selectors before running anonymize.
+- `inspect-columns` also shows sample values (first 3 rows, truncated) to reduce wrong-column selection risk.
+- Column mode currently applies to `.csv` and `.xlsx` only.
+
 ## Textual UI (Terminal)
 Launch the terminal UI:
 ```bash
@@ -82,11 +92,15 @@ uv run cowork-shield-tui
 
 Inside the TUI:
 - Enter file path and workspace.
+- Click `Load Columns` for CSV/XLSX files, then select one or more columns.
+- Loaded column options include sample values from early rows for confirmation.
+- Toggle `Run PII detection on non-selected columns` to combine column mode + Presidio.
 - Risky anonymize overrides require explicit confirmation in-app:
   - `Allow lossy XLSX`
   - `Force re-anonymize` (requires non-empty reason)
 - Use buttons or hotkeys:
   - `p` preview entities
+  - `c` load spreadsheet columns
   - `a` anonymize
   - `r` restore
   - `w` refresh workspace list
@@ -102,8 +116,11 @@ Default URL: `http://127.0.0.1:7860`
 Security requirement: Gradio must stay bound to `127.0.0.1` only. Do not expose this service externally.
 
 Features:
-- Shield tab: upload file, select workspace, anonymize, download output, review entity table.
+- Shield tab: upload file, select workspace, optional column selection for CSV/XLSX, anonymize, download output, review entity table.
 - Restore tab: upload anonymized file, select workspace, restore, download output.
+- For spreadsheet files, choose columns from the multi-select dropdown.
+- Column dropdown labels include lightweight data type hints and sample values.
+- Enable `Run PII detection on non-selected columns` to combine manual column selection with Presidio.
 - Risky overrides are gated with explicit confirmation:
   - `allow-lossy-xlsx`
   - `force-reanonymize` (requires a non-empty reason)
