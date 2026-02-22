@@ -7,6 +7,7 @@ import pytest
 from openpyxl import load_workbook
 
 from cowork_shield.detection.engine import DetectionEngine
+from cowork_shield.exceptions import XLSXContentLossRiskError
 from cowork_shield.handlers.xlsx import XlsxHandler
 from cowork_shield.tokenizer.generator import TokenGenerator
 
@@ -117,3 +118,33 @@ class TestXlsxHandler:
 
         backup_path = input_path.with_suffix(".xlsx.backup")
         assert backup_path.exists()
+
+    def test_blocks_lossy_content_without_ack(
+        self, tmp_path, detection_engine, token_generator, monkeypatch
+    ):
+        monkeypatch.setattr(
+            XlsxHandler,
+            "_has_lossy_content",
+            staticmethod(lambda wb: True),
+        )
+        handler = XlsxHandler(allow_lossy_xlsx=False)
+        input_path = FIXTURES_DIR / "sample_contacts.xlsx"
+        output_path = tmp_path / "anonymized.xlsx"
+
+        with pytest.raises(XLSXContentLossRiskError):
+            handler.anonymize(input_path, output_path, detection_engine, token_generator)
+
+    def test_allows_lossy_content_with_ack(
+        self, tmp_path, detection_engine, token_generator, monkeypatch
+    ):
+        monkeypatch.setattr(
+            XlsxHandler,
+            "_has_lossy_content",
+            staticmethod(lambda wb: True),
+        )
+        handler = XlsxHandler(allow_lossy_xlsx=True)
+        input_path = FIXTURES_DIR / "sample_contacts.xlsx"
+        output_path = tmp_path / "anonymized.xlsx"
+
+        handler.anonymize(input_path, output_path, detection_engine, token_generator)
+        assert output_path.exists()

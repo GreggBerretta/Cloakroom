@@ -34,7 +34,7 @@ class TestTokenGenerator:
 
     def test_creates_token(self):
         token = self.gen.get_or_create_token("John Smith", EntityType.PERSON)
-        assert token.token_text == "PERSON_00001"
+        assert token.token_text == "[PERSON_00001]"
         assert token.entity_type == EntityType.PERSON
         assert token.hmac_tag  # non-empty
 
@@ -53,21 +53,21 @@ class TestTokenGenerator:
         t1 = self.gen.get_or_create_token("John Smith", EntityType.PERSON)
         t2 = self.gen.get_or_create_token("Jane Doe", EntityType.PERSON)
         assert t1.token_text != t2.token_text
-        assert t1.token_text == "PERSON_00001"
-        assert t2.token_text == "PERSON_00002"
+        assert t1.token_text == "[PERSON_00001]"
+        assert t2.token_text == "[PERSON_00002]"
 
     def test_cross_type_separation(self):
         t1 = self.gen.get_or_create_token("Amazon", EntityType.PERSON)
         t2 = self.gen.get_or_create_token("Amazon", EntityType.ORGANIZATION)
         assert t1.token_text != t2.token_text
-        assert t1.token_text == "PERSON_00001"
-        assert t2.token_text == "ORG_00001"
+        assert t1.token_text == "[PERSON_00001]"
+        assert t2.token_text == "[ORG_00001]"
 
     def test_counter_incrementing(self):
         self.gen.get_or_create_token("Alice", EntityType.PERSON)
         self.gen.get_or_create_token("Bob", EntityType.PERSON)
         t3 = self.gen.get_or_create_token("Charlie", EntityType.PERSON)
-        assert t3.token_text == "PERSON_00003"
+        assert t3.token_text == "[PERSON_00003]"
 
     def test_verify_token_success(self):
         token = self.gen.get_or_create_token("John Smith", EntityType.PERSON)
@@ -79,7 +79,7 @@ class TestTokenGenerator:
 
     def test_get_mapping(self):
         self.gen.get_or_create_token("John Smith", EntityType.PERSON)
-        mapping = self.gen.get_mapping("PERSON_00001")
+        mapping = self.gen.get_mapping("[PERSON_00001]")
         assert mapping is not None
         assert mapping.original_value == "John Smith"
 
@@ -87,8 +87,8 @@ class TestTokenGenerator:
         self.gen.get_or_create_token("John Smith", EntityType.PERSON)
         self.gen.get_or_create_token("Acme Corp", EntityType.ORGANIZATION)
         lookup = self.gen.get_reverse_lookup()
-        assert lookup["PERSON_00001"] == "John Smith"
-        assert lookup["ORG_00001"] == "Acme Corp"
+        assert lookup["[PERSON_00001]"] == "John Smith"
+        assert lookup["[ORG_00001]"] == "Acme Corp"
 
     def test_state_export_import(self):
         self.gen.get_or_create_token("John Smith", EntityType.PERSON)
@@ -102,16 +102,16 @@ class TestTokenGenerator:
 
         # Same value should return same token (not create new)
         token = gen2.get_or_create_token("John Smith", EntityType.PERSON)
-        assert token.token_text == "PERSON_00001"
+        assert token.token_text == "[PERSON_00001]"
 
         # New value should continue from counter
         token2 = gen2.get_or_create_token("Jane Doe", EntityType.PERSON)
-        assert token2.token_text == "PERSON_00002"
+        assert token2.token_text == "[PERSON_00002]"
 
     def test_source_file_tracking(self):
         self.gen.get_or_create_token("John Smith", EntityType.PERSON, source_file="a.xlsx")
         self.gen.get_or_create_token("John Smith", EntityType.PERSON, source_file="b.docx")
 
-        mapping = self.gen.get_mapping("PERSON_00001")
+        mapping = self.gen.get_mapping("[PERSON_00001]")
         assert "a.xlsx" in mapping.source_files
         assert "b.docx" in mapping.source_files

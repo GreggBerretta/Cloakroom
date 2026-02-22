@@ -2,18 +2,44 @@
 
 from __future__ import annotations
 
+import getpass
 from pathlib import Path
+import stat
 
 import click
 from rich.console import Console
 from rich.table import Table
 
+from cowork_shield.clipboard.operations import (
+    restore_clipboard,
+    shield_clipboard,
+)
 from cowork_shield.exceptions import CoWorkShieldError
 from cowork_shield.pipeline.anonymize import AnonymizePipeline
 from cowork_shield.pipeline.restore import RestorePipeline
+from cowork_shield.vault.keychain import get_master_key, store_master_key
+from cowork_shield.vault.recovery import (
+    export_encrypted_master_key,
+    import_encrypted_master_key,
+)
 from cowork_shield.workspace.manager import WorkspaceManager
 
 console = Console()
+
+
+def _show_error(exc: Exception) -> None:
+    code = exc.__class__.__name__
+    console.print(f"[bold red]Error [{code}]:[/] {exc}")
+
+
+def _resolve_passphrase(passphrase: str | None, *, confirm: bool) -> str:
+    if passphrase:
+        return passphrase
+    return click.prompt(
+        "Passphrase",
+        hide_input=True,
+        confirmation_prompt=confirm,
+    )
 
 
 @click.group()
@@ -41,7 +67,32 @@ def main():
     "--score-threshold", type=float, default=0.7,
     help="Minimum Presidio confidence score (0.0-1.0)",
 )
-def anonymize(file, output, workspace, ttl, score_threshold):
+@click.option(
+    "--allow-lossy-xlsx",
+    is_flag=True,
+    help="Allow XLSX processing even when chart/image loss risk is detected.",
+)
+@click.option(
+    "--force-reanonymize",
+    is_flag=True,
+    help="Override deterministic/model lock checks (requires --reason).",
+)
+@click.option(
+    "--reason",
+    type=str,
+    default="",
+    help="Audit reason for --force-reanonymize.",
+)
+def anonymize(
+    file,
+    output,
+    workspace,
+    ttl,
+    score_threshold,
+    allow_lossy_xlsx,
+    force_reanonymize,
+    reason,
+):
     """Anonymize PII in a document.
 
     Detects personally identifiable information, replaces it with
@@ -54,13 +105,25 @@ def anonymize(file, output, workspace, ttl, score_threshold):
         cowork-shield anonymize contract.docx -o contract.safe.docx
     """
     try:
+        if force_reanonymize and not reason.strip():
+            raise click.UsageError(
+                "--force-reanonymize requires --reason for audit logging."
+            )
+
         mgr = WorkspaceManager()
         ctx = mgr.get_or_create_workspace(workspace, ttl_hours=ttl)
 
         input_path = Path(file)
         output_path = Path(output) if output else None
 
-        pipeline = AnonymizePipeline(ctx, score_threshold=score_threshold)
+        pipeline = AnonymizePipeline(
+            ctx,
+            score_threshold=score_threshold,
+            force_reanonymize=force_reanonymize,
+            override_reason=reason,
+            override_user=getpass.getuser(),
+            allow_lossy_xlsx=allow_lossy_xlsx,
+        )
         result = pipeline.run(input_path, output_path)
 
         console.print()
@@ -69,12 +132,14 @@ def anonymize(file, output, workspace, ttl, score_threshold):
         console.print(f"  Workspace: {result.workspace_name}")
         console.print(f"  Entities:  {result.entities_found} detected")
         console.print(f"  Tokens:    {result.tokens_applied} applied")
+        if force_reanonymize:
+            console.print(f"  Override:  [yellow]ON[/] ({reason.strip()})")
         if result.backup_path:
             console.print(f"  Backup:    {result.backup_path}")
         console.print()
 
     except CoWorkShieldError as e:
-        console.print(f"[bold red]Error:[/] {e}")
+        _show_error(e)
         raise SystemExit(1)
 
 
@@ -116,11 +181,89 @@ def restore(file, output, workspace):
         console.print(f"  Output:       {result.output_path}")
         console.print(f"  Workspace:    {result.workspace_name}")
         console.print(f"  Tokens:       {result.tokens_restored} restored")
-        console.print(f"  Verification: [green]PASSED[/]")
+        console.print("  Verification: [green]PASSED[/]")
         console.print()
 
     except CoWorkShieldError as e:
-        console.print(f"[bold red]Error:[/] {e}")
+        _show_error(e)
+        raise SystemExit(1)
+
+
+@main.command("shield-clipboard")
+@click.option(
+    "-w", "--workspace", type=str, default="default",
+    help="Workspace name for identity sharing across operations",
+)
+@click.option(
+    "--score-threshold", type=float, default=0.7,
+    help="Minimum Presidio confidence score (0.0-1.0)",
+)
+@click.option(
+    "--force-reanonymize",
+    is_flag=True,
+    help="Override deterministic/model lock checks (requires --reason).",
+)
+@click.option(
+    "--reason",
+    type=str,
+    default="",
+    help="Audit reason for --force-reanonymize.",
+)
+def shield_clipboard_cmd(workspace, score_threshold, force_reanonymize, reason):
+    """Anonymize current clipboard contents in place."""
+    try:
+        if force_reanonymize and not reason.strip():
+            raise click.UsageError(
+                "--force-reanonymize requires --reason for audit logging."
+            )
+
+        mgr = WorkspaceManager()
+        ctx = mgr.get_or_create_workspace(workspace)
+
+        result = shield_clipboard(
+            ctx,
+            score_threshold=score_threshold,
+            force_reanonymize=force_reanonymize,
+            override_reason=reason,
+            override_user=getpass.getuser(),
+        )
+
+        console.print()
+        console.print("[bold green]Clipboard anonymized[/]")
+        console.print(f"  Workspace: {workspace}")
+        console.print(f"  Entities:  {result.entities_found} detected")
+        console.print(f"  Tokens:    {result.tokens_applied} applied")
+        if force_reanonymize:
+            console.print(f"  Override:  [yellow]ON[/] ({reason.strip()})")
+        console.print()
+
+    except CoWorkShieldError as e:
+        _show_error(e)
+        raise SystemExit(1)
+
+
+@main.command("restore-clipboard")
+@click.option(
+    "-w", "--workspace", type=str, default="default",
+    help="Workspace to restore from",
+)
+def restore_clipboard_cmd(workspace):
+    """Restore tokenized clipboard contents in place."""
+    try:
+        mgr = WorkspaceManager()
+        ctx = mgr.get_active_workspace(workspace)
+
+        result = restore_clipboard(ctx)
+
+        console.print()
+        console.print("[bold green]Clipboard restored[/]")
+        console.print(f"  Workspace:    {workspace}")
+        console.print(f"  Tokens:       {result.tokens_restored} restored")
+        console.print("  Verification: [green]PASSED[/]")
+        console.print()
+
+    except CoWorkShieldError as e:
+        _show_error(e)
         raise SystemExit(1)
 
 
@@ -159,7 +302,7 @@ def workspace_list():
         console.print(table)
 
     except CoWorkShieldError as e:
-        console.print(f"[bold red]Error:[/] {e}")
+        _show_error(e)
         raise SystemExit(1)
 
 
@@ -206,7 +349,120 @@ def workspace_show(name, show_mappings):
         console.print()
 
     except CoWorkShieldError as e:
-        console.print(f"[bold red]Error:[/] {e}")
+        _show_error(e)
+        raise SystemExit(1)
+
+
+@workspace_group.command("export-key")
+@click.option(
+    "-w", "--workspace", "workspace_name", required=True,
+    help="Workspace name to export the recovery key for.",
+)
+@click.option(
+    "-o", "--output", "output_path", type=click.Path(), required=True,
+    help="Destination file path for encrypted recovery key payload.",
+)
+@click.option(
+    "--passphrase", default=None,
+    help="Passphrase used to encrypt export payload (prompted if omitted).",
+)
+@click.option(
+    "--force", is_flag=True,
+    help="Overwrite output file if it already exists.",
+)
+def workspace_export_key(workspace_name, output_path, passphrase, force):
+    """Export workspace master key as an encrypted recovery payload."""
+    try:
+        mgr = WorkspaceManager()
+        metadata = mgr.get_workspace_metadata(workspace_name)
+        workspace_id = metadata["workspace_id"]
+
+        master_key = get_master_key(workspace_id)
+        if master_key is None:
+            raise click.ClickException(
+                "No key found in Keychain for this workspace. "
+                "Recovery export is not possible."
+            )
+
+        destination = Path(output_path).expanduser()
+        if destination.exists() and not force:
+            raise click.ClickException(
+                f"Output already exists: {destination}. Use --force to overwrite."
+            )
+        destination.parent.mkdir(parents=True, exist_ok=True)
+
+        resolved_passphrase = _resolve_passphrase(passphrase, confirm=True)
+        payload = export_encrypted_master_key(
+            workspace_id=workspace_id,
+            master_key=master_key,
+            passphrase=resolved_passphrase,
+        )
+        destination.write_bytes(payload)
+        destination.chmod(stat.S_IRUSR | stat.S_IWUSR)
+
+        console.print("[green]Recovery key exported.[/]")
+        console.print(f"  Workspace: {workspace_name}")
+        console.print(f"  Output:    {destination}")
+        console.print("  File mode: 600")
+
+    except click.ClickException as e:
+        _show_error(e)
+        raise SystemExit(1)
+    except CoWorkShieldError as e:
+        _show_error(e)
+        raise SystemExit(1)
+
+
+@workspace_group.command("import-key")
+@click.option(
+    "-w", "--workspace", "workspace_name", required=True,
+    help="Workspace name to restore the recovery key to.",
+)
+@click.option(
+    "-i", "--input", "input_path", type=click.Path(exists=True), required=True,
+    help="Encrypted recovery key payload file.",
+)
+@click.option(
+    "--passphrase", default=None,
+    help="Passphrase used to decrypt export payload (prompted if omitted).",
+)
+@click.option(
+    "--force", is_flag=True,
+    help="Replace existing Keychain entry (admin-only use).",
+)
+def workspace_import_key(workspace_name, input_path, passphrase, force):
+    """Import an encrypted recovery payload into macOS Keychain."""
+    try:
+        mgr = WorkspaceManager()
+        metadata = mgr.get_workspace_metadata(workspace_name)
+        workspace_id = metadata["workspace_id"]
+
+        existing_key = get_master_key(workspace_id)
+        if existing_key is not None and not force:
+            raise click.ClickException(
+                "Keychain entry already exists for this workspace. "
+                "Use --force to replace it."
+            )
+
+        blob = Path(input_path).expanduser().read_bytes()
+        resolved_passphrase = _resolve_passphrase(passphrase, confirm=False)
+        _, master_key = import_encrypted_master_key(
+            blob=blob,
+            passphrase=resolved_passphrase,
+            expected_workspace_id=workspace_id,
+        )
+        store_master_key(workspace_id, master_key)
+
+        console.print("[green]Recovery key imported.[/]")
+        console.print(f"  Workspace: {workspace_name}")
+        if force:
+            console.print("  Mode:      forced replace")
+
+    except click.ClickException as e:
+        _show_error(e)
+        raise SystemExit(1)
+    except CoWorkShieldError as e:
+        _show_error(e)
         raise SystemExit(1)
 
 
@@ -228,7 +484,7 @@ def workspace_delete(name, force):
     except click.Abort:
         console.print("Cancelled.")
     except CoWorkShieldError as e:
-        console.print(f"[bold red]Error:[/] {e}")
+        _show_error(e)
         raise SystemExit(1)
 
 
@@ -241,5 +497,5 @@ def workspace_cleanup():
         console.print(f"[green]Cleaned up {count} expired workspace(s).[/]")
 
     except CoWorkShieldError as e:
-        console.print(f"[bold red]Error:[/] {e}")
+        _show_error(e)
         raise SystemExit(1)

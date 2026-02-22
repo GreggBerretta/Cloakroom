@@ -9,6 +9,7 @@ from cowork_shield.exceptions import (
     HallucinationDetectedError,
     IPCError,
     ModelHashMismatchError,
+    RecoveryKeyError,
 )
 
 
@@ -19,6 +20,7 @@ class TestExceptionHierarchy:
         assert issubclass(AttestationAbortedError, CoWorkShieldError)
         assert issubclass(BackupError, CoWorkShieldError)
         assert issubclass(ModelHashMismatchError, CoWorkShieldError)
+        assert issubclass(RecoveryKeyError, CoWorkShieldError)
         assert issubclass(IPCError, CoWorkShieldError)
 
 

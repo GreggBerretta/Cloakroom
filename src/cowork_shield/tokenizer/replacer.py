@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from cowork_shield.models import DetectedEntity, EntityType, ReplacementRecord, Token
+from cowork_shield.models import DetectedEntity, ReplacementRecord
+from cowork_shield.tokenizer.patterns import ANY_TOKEN_PATTERN
 from cowork_shield.tokenizer.generator import TokenGenerator
 
 
@@ -54,14 +55,27 @@ class TextReplacer:
     ) -> str:
         """Replace all tokens in text with their original values.
 
-        Uses simple string replacement since token format (e.g., PERSON_001)
-        is unambiguous and won't appear in normal text.
-
-        Tokens are replaced longest-first to prevent partial matches
-        (e.g., CREDIT_CARD_001 before CREDIT_CARD_01 if both existed).
+        Supports both v2 bracketed tokens and legacy unbracketed tokens.
         """
-        # Sort by token length descending to prevent partial matches
-        for token_text in sorted(reverse_lookup, key=len, reverse=True):
-            original_value = reverse_lookup[token_text]
-            text = text.replace(token_text, original_value)
-        return text
+
+        if not reverse_lookup:
+            return text
+
+        def _replace(match):
+            token_text = match.group(0)
+            if token_text in reverse_lookup:
+                return reverse_lookup[token_text]
+
+            # Backward compatibility across token ABIs.
+            if token_text.startswith("[") and token_text.endswith("]"):
+                inner = token_text[1:-1]
+                if inner in reverse_lookup:
+                    return reverse_lookup[inner]
+            else:
+                wrapped = f"[{token_text}]"
+                if wrapped in reverse_lookup:
+                    return reverse_lookup[wrapped]
+
+            return token_text
+
+        return ANY_TOKEN_PATTERN.sub(_replace, text)

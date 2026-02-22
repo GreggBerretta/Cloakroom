@@ -73,7 +73,7 @@ class TestVerifyAllHmacs:
 
         failures = verifier.verify_all_hmacs(mappings)
         assert len(failures) == 1
-        assert failures[0] == "PERSON_00001"
+        assert failures[0] == "[PERSON_00001]"
 
 
 class TestScanForRemainingTokens:

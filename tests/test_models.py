@@ -124,7 +124,7 @@ class TestVaultData:
         assert vault_data.attestation_abort_count == 0
         assert vault_data.time_to_close_after_restore == []
         assert vault_data.model_hashes == {}
-        assert vault_data.token_abi_version == "v1"
+        assert vault_data.token_abi_version == "v2"
 
     def test_v2_fields_round_trip(self):
         """V2 fields should survive serialization round-trip."""

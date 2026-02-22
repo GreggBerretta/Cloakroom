@@ -6,7 +6,7 @@ import hashlib
 import hmac as hmac_module
 
 from cowork_shield.detection.entity_types import make_mapping_key, normalize_entity_value
-from cowork_shield.models import EntityMapping, EntityType, Token, now_iso
+from cowork_shield.models import Clock, EntityMapping, EntityType, SystemClock, Token
 
 
 def compute_hmac(token_text: str, original_value: str, hmac_key: bytes) -> str:
@@ -22,10 +22,11 @@ class TokenGenerator:
     in a workspace to ensure cross-file consistency (same person = same token).
     """
 
-    def __init__(self, hmac_key: bytes):
+    def __init__(self, hmac_key: bytes, clock: Clock | None = None):
         self._hmac_key = hmac_key
         self._counters: dict[str, int] = {}  # token_prefix -> next counter
         self._registry: dict[str, EntityMapping] = {}  # mapping_key -> EntityMapping
+        self._clock = clock or SystemClock()
 
     def get_or_create_token(
         self,
@@ -51,7 +52,7 @@ class TokenGenerator:
         counter = self._counters.get(prefix, 0) + 1
         self._counters[prefix] = counter
 
-        token_text = f"{prefix}_{counter:05d}"
+        token_text = f"[{prefix}_{counter:05d}]"
         tag = compute_hmac(token_text, original_value, self._hmac_key)
 
         token = Token(token_text=token_text, entity_type=entity_type, hmac_tag=tag)
@@ -61,7 +62,7 @@ class TokenGenerator:
             original_value=original_value,
             normalized_key=mapping_key,
             entity_type=entity_type,
-            first_seen=now_iso(),
+            first_seen=self._clock.now_iso(),
             source_files=[source_file] if source_file else [],
         )
         self._registry[mapping_key] = mapping

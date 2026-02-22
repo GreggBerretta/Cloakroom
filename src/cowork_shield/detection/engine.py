@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
+import hashlib
+import importlib.metadata
+import json
+from pathlib import Path
+
 from presidio_analyzer import AnalyzerEngine
 
-from cowork_shield.detection.entity_types import SUPPORTED_PRESIDIO_ENTITIES
 from cowork_shield.exceptions import DetectionError
 from cowork_shield.models import DetectedEntity, EntityType
 
 # Lazy-initialized singleton to avoid loading spaCy on every call
 _analyzer: AnalyzerEngine | None = None
+_model_hash: str | None = None
 
 
 def _get_analyzer() -> AnalyzerEngine:
@@ -25,6 +30,54 @@ def _get_analyzer() -> AnalyzerEngine:
     return _analyzer
 
 
+def _safe_pkg_version(package_name: str) -> str:
+    try:
+        return importlib.metadata.version(package_name)
+    except importlib.metadata.PackageNotFoundError:
+        return ""
+
+
+def _compute_model_hash(analyzer: AnalyzerEngine) -> str:
+    payload: dict[str, object] = {
+        "presidio_analyzer": _safe_pkg_version("presidio-analyzer"),
+        "spacy": _safe_pkg_version("spacy"),
+        "en_core_web_lg": _safe_pkg_version("en-core-web-lg"),
+    }
+
+    nlp = None
+    nlp_engine = getattr(analyzer, "nlp_engine", None)
+    if nlp_engine is not None:
+        nlp_map = getattr(nlp_engine, "nlp", None)
+        if isinstance(nlp_map, dict):
+            nlp = nlp_map.get("en")
+
+    if nlp is not None:
+        payload["pipeline"] = list(getattr(nlp, "pipe_names", []))
+        payload["model_meta"] = getattr(nlp, "meta", {})
+        model_path = getattr(nlp, "path", None)
+        if model_path:
+            model_path = Path(model_path)
+            payload["model_path"] = str(model_path)
+
+            for rel_path in ("meta.json", "config.cfg"):
+                file_path = model_path / rel_path
+                if file_path.exists():
+                    payload[f"{rel_path}_sha256"] = hashlib.sha256(
+                        file_path.read_bytes()
+                    ).hexdigest()
+
+    encoded = json.dumps(payload, sort_keys=True, default=str).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _get_model_hash() -> str:
+    global _model_hash
+    if _model_hash is None:
+        analyzer = _get_analyzer()
+        _model_hash = _compute_model_hash(analyzer)
+    return _model_hash
+
+
 class DetectionEngine:
     """Wraps Presidio AnalyzerEngine for PII detection.
 
@@ -34,9 +87,18 @@ class DetectionEngine:
     """
 
     DEFAULT_SCORE_THRESHOLD = 0.7
+    MODEL_LOCK_KEY = "en_core_web_lg"
 
     def __init__(self, score_threshold: float = DEFAULT_SCORE_THRESHOLD):
         self._score_threshold = score_threshold
+
+    @property
+    def model_lock_key(self) -> str:
+        return self.MODEL_LOCK_KEY
+
+    def get_model_hash(self) -> str:
+        """Return a deterministic hash of the loaded detection model environment."""
+        return _get_model_hash()
 
     def detect(self, text: str, language: str = "en") -> list[DetectedEntity]:
         """Detect PII entities in a text string.

@@ -9,6 +9,7 @@ from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter
 
 from cowork_shield.detection.engine import DetectionEngine
+from cowork_shield.exceptions import XLSXContentLossRiskError
 from cowork_shield.models import FileRecord, ReplacementRecord, now_iso
 from cowork_shield.tokenizer.generator import TokenGenerator
 from cowork_shield.tokenizer.replacer import TextReplacer
@@ -24,12 +25,14 @@ class XlsxHandler:
     - Skip pure numeric cells (int/float) — no PII in numbers
     - Cell formatting is preserved automatically by openpyxl
 
-    WARNING: openpyxl destroys charts, images, and shapes on save.
-    A backup is always created before processing.
+    WARNING: openpyxl can destroy charts, images, and shapes on save.
+    This handler blocks by default when those features are present unless
+    explicitly overridden.
     """
 
-    def __init__(self):
+    def __init__(self, allow_lossy_xlsx: bool = False):
         self._replacer = TextReplacer()
+        self._allow_lossy_xlsx = allow_lossy_xlsx
 
     @staticmethod
     def can_handle(file_path: Path) -> bool:
@@ -49,6 +52,12 @@ class XlsxHandler:
             shutil.copy2(input_path, backup_path)
 
         wb = load_workbook(str(input_path), data_only=False)
+        if self._has_lossy_content(wb) and not self._allow_lossy_xlsx:
+            wb.close()
+            raise XLSXContentLossRiskError(
+                "XLSX contains charts/images that openpyxl may drop. "
+                "Re-run with --allow-lossy-xlsx to acknowledge risk."
+            )
         all_records: list[ReplacementRecord] = []
         total_entities = 0
 
@@ -100,6 +109,7 @@ class XlsxHandler:
             tokens_applied=len(all_records),
             timestamp=now_iso(),
             format="xlsx",
+            applied_tokens=sorted({record.token_text for record in all_records}),
         )
 
         return all_records, file_record
@@ -129,3 +139,14 @@ class XlsxHandler:
 
         wb.save(str(output_path))
         wb.close()
+
+    @staticmethod
+    def _has_lossy_content(workbook) -> bool:
+        for worksheet in workbook.worksheets:
+            if getattr(worksheet, "_charts", None):
+                if len(worksheet._charts) > 0:
+                    return True
+            if getattr(worksheet, "_images", None):
+                if len(worksheet._images) > 0:
+                    return True
+        return False

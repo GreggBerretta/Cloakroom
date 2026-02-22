@@ -4,16 +4,14 @@ from __future__ import annotations
 
 import csv
 import hashlib
-import re
 from io import StringIO
 from pathlib import Path
 from typing import Iterable
 
-from cowork_shield.models import EntityMapping, EntityType
+from cowork_shield.models import EntityMapping
+from cowork_shield.tokenizer.patterns import ANY_TOKEN_PATTERN
 
-# Regex matching any token format: PREFIX_NNN
-_PREFIXES = "|".join(et.token_prefix for et in EntityType)
-TOKEN_PATTERN = re.compile(rf"\b({_PREFIXES})_\d{{3,5}}\b")
+TOKEN_PATTERN = ANY_TOKEN_PATTERN
 
 
 def compute_sha256(file_path: Path) -> str:
@@ -61,7 +59,7 @@ class IntegrityVerifier:
 
         remaining = []
         for token in known_set:
-            if token in all_text:
+            if self._token_present(all_text, token):
                 remaining.append(token)
 
         # Also check for any token-pattern matches not in our known set
@@ -71,6 +69,10 @@ class IntegrityVerifier:
                 remaining.append(full_match)
 
         return remaining
+
+    def extract_all_text(self, file_path: Path) -> str:
+        """Extract text content for external token analysis."""
+        return self._extract_all_text(file_path)
 
     def _extract_all_text(self, file_path: Path) -> str:
         """Extract all text content from a file for token scanning."""
@@ -125,3 +127,13 @@ class IntegrityVerifier:
                 for cell in row.cells:
                     parts.append(cell.text)
         return " ".join(parts)
+
+    @staticmethod
+    def _token_present(all_text: str, token: str) -> bool:
+        if token in all_text:
+            return True
+
+        if token.startswith("[") and token.endswith("]"):
+            return token[1:-1] in all_text
+
+        return f"[{token}]" in all_text

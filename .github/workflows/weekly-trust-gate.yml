@@ -1,0 +1,70 @@
+name: Weekly Trust Gate
+
+on:
+  schedule:
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+
+jobs:
+  weekly-gate:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Sync dependencies
+        run: uv sync --extra dev
+
+      - name: Ensure pip exists for spaCy downloader
+        run: uv run python -m ensurepip
+
+      - name: Install spaCy model
+        run: uv run python -m spacy download en_core_web_lg
+
+      - name: Capture dependency drift snapshot
+        run: |
+          uv run python - <<'PY'
+          import importlib.metadata
+          import json
+          import platform
+          import sys
+          from datetime import datetime, timezone
+
+          def version(name: str) -> str:
+              try:
+                  return importlib.metadata.version(name)
+              except importlib.metadata.PackageNotFoundError:
+                  return ""
+
+          payload = {
+              "captured_at": datetime.now(timezone.utc).isoformat(),
+              "python": sys.version,
+              "platform": platform.platform(),
+              "presidio_analyzer": version("presidio-analyzer"),
+              "spacy": version("spacy"),
+              "en_core_web_lg": version("en-core-web-lg"),
+          }
+          with open("dependency-drift.json", "w", encoding="utf-8") as f:
+              json.dump(payload, f, indent=2)
+          PY
+
+      - name: Run full test suite
+        run: uv run pytest -q
+
+      - name: Run EC-15 state integrity gate
+        run: uv run pytest -q tests/test_state_integrity/test_ec15_state_integrity.py
+
+      - name: Upload weekly drift artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-drift
+          path: dependency-drift.json
+

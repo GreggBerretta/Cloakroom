@@ -15,6 +15,9 @@ HANDOFF B core hardening is implemented and test-verified locally.
 - Hallucination/mutation/dropped-token restore checks are fail-closed.
 - TXT and clipboard workflows are implemented.
 - EC-15 State Integrity Gate harness has been added.
+- CI workflows are added for per-push and weekly trust-gate execution.
+- Operational docs are added (`INSTALL.md`, `TROUBLESHOOTING.md`).
+- Encrypted key recovery export/import commands are added for admin recovery.
 
 ## Validation Snapshot
 Latest local validation:
@@ -51,3 +54,13 @@ Per HANDOFF B / PRD_HANDOFF_B remaining validation track:
 
 ## Risk Posture
 Current risk profile is significantly reduced for trust-critical internal use, but weekly drift and long-run sentinel automation are still required before declaring maintenance-grade trust monitoring complete.
+
+## Pilot Go/No-Go Checklist
+| Criterion | Status | Notes |
+| --- | --- | --- |
+| Tests Passing | ✅ | 156/156 |
+| EC-15 Integrity | ✅ | 14/14 |
+| CI Automation | ✅ | `.github/workflows/ci.yml` + weekly gate |
+| Install Docs | ✅ | `INSTALL.md` |
+| Support Runbook | ✅ | `TROUBLESHOOTING.md` |
+| Key Recovery | ✅ | `workspace export-key` / `workspace import-key` |

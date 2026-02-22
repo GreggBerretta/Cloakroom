@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - "codex/**"
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Sync dependencies
+        run: uv sync --extra dev
+
+      - name: Ensure pip exists for spaCy downloader
+        run: uv run python -m ensurepip
+
+      - name: Install spaCy model
+        run: uv run python -m spacy download en_core_web_lg
+
+      - name: Run full test suite
+        run: uv run pytest -q
+
+      - name: Run EC-15 state integrity gate
+        run: uv run pytest -q tests/test_state_integrity/test_ec15_state_integrity.py
+

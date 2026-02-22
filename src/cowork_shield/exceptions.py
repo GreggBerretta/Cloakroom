@@ -59,11 +59,13 @@ class DetectionError(CoWorkShieldError):
 class HallucinationDetectedError(CoWorkShieldError):
     """AI-generated or mutated tokens found in restored text."""
 
-    def __init__(self, flags: list):
+    def __init__(self, flags: list, details: str = ""):
         self.flags = flags
-        super().__init__(
-            f"Found {len(flags)} hallucinated/mutated tokens in restored text."
-        )
+        self.details = details
+        message = f"Found {len(flags)} hallucinated/mutated tokens in restored text."
+        if details:
+            message = f"{message}\n{details}"
+        super().__init__(message)
 
 
 class AttestationAbortedError(CoWorkShieldError):
@@ -83,6 +85,26 @@ class ModelHashMismatchError(CoWorkShieldError):
         super().__init__(
             f"Model hash mismatch: expected {expected[:12]}..., got {actual[:12]}..."
         )
+
+
+class ReplayMismatchError(CoWorkShieldError):
+    """Deterministic replay check failed for identical input."""
+
+    def __init__(self, expected: str, actual: str):
+        self.expected = expected
+        self.actual = actual
+        super().__init__(
+            "Deterministic replay mismatch: expected "
+            f"{expected[:12]}..., got {actual[:12]}..."
+        )
+
+
+class XLSXContentLossRiskError(CoWorkShieldError):
+    """XLSX contains content openpyxl may silently drop."""
+
+
+class RecoveryKeyError(CoWorkShieldError):
+    """Recovery key export/import payload is invalid or cannot be decrypted."""
 
 
 class IPCError(CoWorkShieldError):

@@ -25,7 +25,7 @@ class TestReplaceEntities:
         result, records = self.replacer.replace_entities(
             "My name is John Smith today.", entities, self.gen
         )
-        assert "PERSON_00001" in result
+        assert "[PERSON_00001]" in result
         assert "John Smith" not in result
         assert len(records) == 1
 
@@ -37,9 +37,9 @@ class TestReplaceEntities:
             DetectedEntity(EntityType.LOCATION, "New York", 33, 41, 0.8),
         ]
         result, records = self.replacer.replace_entities(text, entities, self.gen)
-        assert "PERSON_00001" in result
-        assert "ORG_00001" in result
-        assert "LOCATION_00001" in result
+        assert "[PERSON_00001]" in result
+        assert "[ORG_00001]" in result
+        assert "[LOCATION_00001]" in result
         assert len(records) == 3
 
     def test_entity_at_start(self):
@@ -47,7 +47,7 @@ class TestReplaceEntities:
             DetectedEntity(EntityType.PERSON, "John", 0, 4, 0.9),
         ]
         result, _ = self.replacer.replace_entities("John is here.", entities, self.gen)
-        assert result.startswith("PERSON_00001")
+        assert result.startswith("[PERSON_00001]")
 
     def test_entity_at_end(self):
         text = "Call John Smith"
@@ -55,7 +55,7 @@ class TestReplaceEntities:
             DetectedEntity(EntityType.PERSON, "John Smith", 5, 15, 0.9),
         ]
         result, _ = self.replacer.replace_entities(text, entities, self.gen)
-        assert result.endswith("PERSON_00001")
+        assert result.endswith("[PERSON_00001]")
 
     def test_no_entities(self):
         result, records = self.replacer.replace_entities("Hello world", [], self.gen)
@@ -68,19 +68,24 @@ class TestRestoreTokens:
         self.replacer = TextReplacer()
 
     def test_single_restore(self):
-        lookup = {"PERSON_00001": "John Smith"}
-        result = self.replacer.restore_tokens("Call PERSON_00001 today.", lookup)
+        lookup = {"[PERSON_00001]": "John Smith"}
+        result = self.replacer.restore_tokens("Call [PERSON_00001] today.", lookup)
         assert result == "Call John Smith today."
 
     def test_multiple_restores(self):
         lookup = {
-            "PERSON_00001": "John Smith",
-            "ORG_00001": "Acme Corp",
+            "[PERSON_00001]": "John Smith",
+            "[ORG_00001]": "Acme Corp",
         }
         result = self.replacer.restore_tokens(
-            "PERSON_00001 works at ORG_00001.", lookup
+            "[PERSON_00001] works at [ORG_00001].", lookup
         )
         assert result == "John Smith works at Acme Corp."
+
+    def test_restore_legacy_tokens_with_bracketed_lookup(self):
+        lookup = {"[PERSON_00001]": "John Smith"}
+        result = self.replacer.restore_tokens("Call PERSON_00001 today.", lookup)
+        assert result == "Call John Smith today."
 
     def test_no_tokens(self):
         result = self.replacer.restore_tokens("No tokens here.", {})

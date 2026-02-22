@@ -7,17 +7,25 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from cowork_shield.detection.engine import DetectionEngine
-from cowork_shield.exceptions import UnsupportedFormatError
+from cowork_shield.exceptions import (
+    CoWorkShieldError,
+    ModelHashMismatchError,
+    ReplayMismatchError,
+    UnsupportedFormatError,
+)
 from cowork_shield.handlers.csv_handler import CsvHandler
 from cowork_shield.handlers.docx import DocxHandler
+from cowork_shield.handlers.text_handler import TextHandler
 from cowork_shield.handlers.xlsx import XlsxHandler
-from cowork_shield.models import ReplacementRecord
+from cowork_shield.models import Clock, EntityMapping, FileRecord, SystemClock
+from cowork_shield.verification.verifier import compute_sha256
 from cowork_shield.workspace.manager import WorkspaceContext
 
 HANDLER_MAP = {
     ".xlsx": XlsxHandler,
     ".csv": CsvHandler,
     ".docx": DocxHandler,
+    ".txt": TextHandler,
 }
 
 
@@ -34,24 +42,31 @@ class AnonymizeResult:
 
 
 class AnonymizePipeline:
-    """Orchestrates the full anonymization flow for a file.
-
-    Flow:
-    1. Resolve file handler based on extension
-    2. Create backup of original file
-    3. Run handler.anonymize() (detection + replacement)
-    4. Store all new mappings in vault
-    5. Record file metadata in vault
-    6. Persist vault to disk (atomic write)
-    """
+    """Orchestrates the full anonymization flow for a file."""
 
     def __init__(
         self,
         workspace_ctx: WorkspaceContext,
         score_threshold: float = 0.7,
+        *,
+        clock: Clock | None = None,
+        force_reanonymize: bool = False,
+        override_reason: str = "",
+        override_user: str = "",
+        allow_lossy_xlsx: bool = False,
     ):
         self._ctx = workspace_ctx
+        self._clock = clock or SystemClock()
         self._detection = DetectionEngine(score_threshold=score_threshold)
+        self._force_reanonymize = force_reanonymize
+        self._override_reason = override_reason.strip()
+        self._override_user = override_user.strip()
+        self._allow_lossy_xlsx = allow_lossy_xlsx
+
+        if self._force_reanonymize and not self._override_reason:
+            raise CoWorkShieldError(
+                "--force-reanonymize requires a non-empty --reason for auditability."
+            )
 
     def run(
         self,
@@ -60,50 +75,141 @@ class AnonymizePipeline:
     ) -> AnonymizeResult:
         """Anonymize a single file within the workspace context."""
         input_path = input_path.resolve()
+        self._ctx.ensure_not_expired()
 
-        # 1. Validate format
-        suffix = input_path.suffix.lower()
-        handler_cls = HANDLER_MAP.get(suffix)
-        if handler_cls is None:
-            raise UnsupportedFormatError(suffix)
-        handler = handler_cls()
+        with self._ctx.operation_lock():
+            suffix = input_path.suffix.lower()
+            handler_cls = HANDLER_MAP.get(suffix)
+            if handler_cls is None:
+                raise UnsupportedFormatError(suffix)
 
-        # 2. Set default output path
-        if output_path is None:
-            output_path = input_path.with_stem(input_path.stem + ".anonymized")
+            if suffix == ".xlsx":
+                handler = handler_cls(allow_lossy_xlsx=self._allow_lossy_xlsx)
+            else:
+                handler = handler_cls()
 
-        # 3. Create backup
-        backup_path = None
-        if suffix == ".xlsx":
-            backup_path = input_path.with_suffix(input_path.suffix + ".backup")
-            if not backup_path.exists():
-                shutil.copy2(input_path, backup_path)
+            if output_path is None:
+                output_path = input_path.with_stem(input_path.stem + ".anonymized")
 
-        # 4. Run anonymization
-        records, file_record = handler.anonymize(
-            input_path,
-            output_path,
-            self._detection,
-            self._ctx.token_generator,
-            source_file=input_path.name,
-        )
+            backup_path = None
+            if suffix == ".xlsx":
+                backup_path = input_path.with_suffix(input_path.suffix + ".backup")
+                if not backup_path.exists():
+                    shutil.copy2(input_path, backup_path)
 
-        # 5. Update vault with new mappings from the generator
-        counters, mappings = self._ctx.token_generator.export_state()
-        self._ctx.vault_data.token_counter = counters
-        self._ctx.vault_data.mappings = mappings
+            input_hash = compute_sha256(input_path)
+            model_hash = self._detection.get_model_hash()
+            expected_output_hash = ""
+            override_events: list[str] = []
 
-        # 6. Record file in vault
-        self._ctx.vault_data.file_records.append(file_record)
+            model_lock_key = self._detection.model_lock_key
+            locked_model_hash = self._ctx.vault_data.model_hashes.get(model_lock_key)
+            if locked_model_hash and locked_model_hash != model_hash:
+                if not self._force_reanonymize:
+                    raise ModelHashMismatchError(expected=locked_model_hash, actual=model_hash)
+                override_events.append("model_hash_mismatch")
 
-        # 7. Persist vault
-        self._ctx.persist()
+            previous_record = self._find_previous_record(input_path, input_hash)
+            if previous_record is not None:
+                expected_output_hash = previous_record.file_hash_after
+                if previous_record.model_hash and previous_record.model_hash != model_hash:
+                    if not self._force_reanonymize:
+                        raise ModelHashMismatchError(
+                            expected=previous_record.model_hash,
+                            actual=model_hash,
+                        )
+                    override_events.append("previous_record_model_mismatch")
 
-        return AnonymizeResult(
-            input_path=input_path,
-            output_path=output_path,
-            backup_path=backup_path,
-            entities_found=file_record.entities_found,
-            tokens_applied=file_record.tokens_applied,
-            workspace_name=self._ctx.workspace_name,
-        )
+            counters_snapshot, mappings_snapshot = self._ctx.token_generator.export_state()
+            file_records_before = list(self._ctx.vault_data.file_records)
+            model_hashes_before = dict(self._ctx.vault_data.model_hashes)
+            token_counter_before = dict(self._ctx.vault_data.token_counter)
+            mappings_before = dict(self._ctx.vault_data.mappings)
+            anonymize_count_before = self._ctx.vault_data.anonymize_count
+            last_used_before = self._ctx.vault_data.last_used
+            token_abi_before = self._ctx.vault_data.token_abi_version
+
+            try:
+                records, file_record = handler.anonymize(
+                    input_path,
+                    output_path,
+                    self._detection,
+                    self._ctx.token_generator,
+                    source_file=input_path.name,
+                )
+            except Exception:
+                self._ctx.token_generator.load_state(counters_snapshot, mappings_snapshot)
+                raise
+
+            file_record.model_hash = model_hash
+            file_record.applied_tokens = sorted({record.token_text for record in records})
+            file_record.previous_output_hash = expected_output_hash
+
+            if expected_output_hash and file_record.file_hash_after != expected_output_hash:
+                if not self._force_reanonymize:
+                    self._rollback_run(output_path, counters_snapshot, mappings_snapshot)
+                    raise ReplayMismatchError(
+                        expected=expected_output_hash,
+                        actual=file_record.file_hash_after,
+                    )
+                override_events.append("replay_hash_mismatch")
+
+            if self._force_reanonymize:
+                override_events.append("manual_force_reanonymize")
+                file_record.reanonymize_override = True
+                file_record.override_reason = self._override_reason
+                file_record.override_user = self._override_user
+                file_record.override_timestamp = self._clock.now_iso()
+
+            if override_events:
+                file_record.override_events = sorted(set(override_events))
+
+            counters, mappings = self._ctx.token_generator.export_state()
+            self._ctx.vault_data.token_counter = counters
+            self._ctx.vault_data.mappings = mappings
+            self._ctx.vault_data.file_records.append(file_record)
+            self._ctx.vault_data.model_hashes[model_lock_key] = model_hash
+            self._ctx.vault_data.token_abi_version = "v2"
+            self._ctx.vault_data.anonymize_count += 1
+            self._ctx.vault_data.last_used = self._clock.now_iso()
+
+            try:
+                self._ctx.persist()
+            except Exception:
+                self._ctx.token_generator.load_state(counters_snapshot, mappings_snapshot)
+                self._ctx.vault_data.file_records = file_records_before
+                self._ctx.vault_data.model_hashes = model_hashes_before
+                self._ctx.vault_data.token_counter = token_counter_before
+                self._ctx.vault_data.mappings = mappings_before
+                self._ctx.vault_data.anonymize_count = anonymize_count_before
+                self._ctx.vault_data.last_used = last_used_before
+                self._ctx.vault_data.token_abi_version = token_abi_before
+                if output_path.exists():
+                    output_path.unlink()
+                raise
+
+            return AnonymizeResult(
+                input_path=input_path,
+                output_path=output_path,
+                backup_path=backup_path,
+                entities_found=file_record.entities_found,
+                tokens_applied=file_record.tokens_applied,
+                workspace_name=self._ctx.workspace_name,
+            )
+
+    def _find_previous_record(self, input_path: Path, input_hash: str) -> FileRecord | None:
+        wanted_path = str(input_path)
+        for record in reversed(self._ctx.vault_data.file_records):
+            if record.file_path == wanted_path and record.file_hash_before == input_hash:
+                return record
+        return None
+
+    def _rollback_run(
+        self,
+        output_path: Path,
+        counters_snapshot: dict[str, int],
+        mappings_snapshot: dict[str, EntityMapping],
+    ) -> None:
+        self._ctx.token_generator.load_state(counters_snapshot, mappings_snapshot)
+        if output_path.exists():
+            output_path.unlink()

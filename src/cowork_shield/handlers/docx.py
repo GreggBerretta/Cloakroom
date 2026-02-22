@@ -229,9 +229,6 @@ class DocxHandler:
         if not new_char_to_run:
             return
 
-        # Assign text to each run
-        run_texts: dict[int, list[str]] = {i: [] for i in range(len(runs))}
-
         # Build segments: consecutive chars with the same run_idx
         segments: list[tuple[int, str]] = []
         current_run_idx = new_char_to_run[0]
@@ -267,7 +264,7 @@ class DocxHandler:
 
     def _find_token_at_position(self, text: str, pos: int, entity) -> str | None:
         """Find the token text at a given position in the new text."""
-        # Token format is PREFIX_NNN, e.g., PERSON_001
+        # Token format is [PREFIX_NNNNN], with legacy fallback PREFIX_NNN.
         prefix = entity.entity_type.token_prefix
         # Look for the token starting at roughly the expected position
         # We search a window around the position since offsets may shift
@@ -276,7 +273,7 @@ class DocxHandler:
         window = text[search_start:search_end]
 
         import re
-        pattern = rf"{re.escape(prefix)}_\d{{3,5}}"
+        pattern = rf"(?:\[{re.escape(prefix)}_\d{{5}}\]|{re.escape(prefix)}_\d{{3,5}})"
         match = re.search(pattern, window)
         if match:
             return match.group(0)

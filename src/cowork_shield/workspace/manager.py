@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+from datetime import datetime, timezone
 import json
+import threading
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
-from cowork_shield.exceptions import WorkspaceNotFoundError
+from cowork_shield.exceptions import WorkspaceExpiredError, WorkspaceNotFoundError
 from cowork_shield.models import VaultData, now_iso
 from cowork_shield.tokenizer.generator import TokenGenerator
 from cowork_shield.vault.crypto import derive_hmac_key, generate_master_key
@@ -35,6 +38,11 @@ class WorkspaceContext:
     vault_data: VaultData
     token_generator: TokenGenerator
     master_key: bytes
+    _operation_lock: threading.RLock = field(
+        default_factory=threading.RLock,
+        repr=False,
+        compare=False,
+    )
 
     def persist(self) -> None:
         """Save current state (mappings, counters) back to vault."""
@@ -46,6 +54,23 @@ class WorkspaceContext:
     def get_reverse_lookup(self) -> dict[str, str]:
         """Build token_text -> original_value lookup for restoration."""
         return self.token_generator.get_reverse_lookup()
+
+    @contextmanager
+    def operation_lock(self):
+        """Serialize workspace operations to avoid concurrent state corruption."""
+        with self._operation_lock:
+            yield
+
+    def ensure_not_expired(self) -> None:
+        """Fail fast when TTL has elapsed during an active session."""
+        ttl_hours = self.vault_data.ttl_hours
+        if ttl_hours <= 0:
+            return
+
+        created = datetime.fromisoformat(self.vault_data.created_at)
+        elapsed_hours = (datetime.now(timezone.utc) - created).total_seconds() / 3600
+        if elapsed_hours > ttl_hours:
+            raise WorkspaceExpiredError(self.workspace_name)
 
 
 class WorkspaceManager:
@@ -128,7 +153,8 @@ class WorkspaceManager:
         if master_key is None:
             raise WorkspaceNotFoundError(
                 f"Encryption key for workspace '{name}' not found in Keychain. "
-                f"The vault cannot be decrypted."
+                f"The vault cannot be decrypted. If this Keychain entry was deleted, "
+                f"the workspace is cryptographically unrecoverable."
             )
 
         # Load vault
@@ -148,6 +174,14 @@ class WorkspaceManager:
             token_generator=token_gen,
             master_key=master_key,
         )
+
+    def get_workspace_metadata(self, name: str) -> dict:
+        """Load workspace metadata without requiring Keychain access."""
+        ws_dir = self._base_dir / name
+        meta_path = ws_dir / "metadata.json"
+        if not meta_path.exists():
+            raise WorkspaceNotFoundError(name)
+        return json.loads(meta_path.read_text(encoding="utf-8"))
 
     def list_workspaces(self) -> list[dict]:
         """List all workspaces with metadata."""

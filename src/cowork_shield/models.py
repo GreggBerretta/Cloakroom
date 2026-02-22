@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
+from typing import Protocol
 
 
 class EntityType(str, Enum):
@@ -66,7 +67,7 @@ class DetectedEntity:
 class Token:
     """A deterministic replacement token with HMAC integrity tag.
 
-    Format: {PREFIX}_{NNNNN} (e.g., PERSON_00001, ORG_00002)
+    Format: [{PREFIX}_{NNNNN}] (e.g., [PERSON_00001], [ORG_00002])
     """
 
     token_text: str
@@ -130,6 +131,14 @@ class FileRecord:
     tokens_applied: int
     timestamp: str
     format: str
+    model_hash: str = ""
+    applied_tokens: list[str] = field(default_factory=list)
+    reanonymize_override: bool = False
+    override_reason: str = ""
+    override_user: str = ""
+    override_timestamp: str = ""
+    previous_output_hash: str = ""
+    override_events: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -141,11 +150,36 @@ class FileRecord:
             "tokens_applied": self.tokens_applied,
             "timestamp": self.timestamp,
             "format": self.format,
+            "model_hash": self.model_hash,
+            "applied_tokens": self.applied_tokens,
+            "reanonymize_override": self.reanonymize_override,
+            "override_reason": self.override_reason,
+            "override_user": self.override_user,
+            "override_timestamp": self.override_timestamp,
+            "previous_output_hash": self.previous_output_hash,
+            "override_events": self.override_events,
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> FileRecord:
-        return cls(**data)
+        return cls(
+            file_path=data["file_path"],
+            file_hash_before=data["file_hash_before"],
+            file_hash_after=data["file_hash_after"],
+            anonymized_path=data["anonymized_path"],
+            entities_found=data["entities_found"],
+            tokens_applied=data["tokens_applied"],
+            timestamp=data["timestamp"],
+            format=data["format"],
+            model_hash=data.get("model_hash", ""),
+            applied_tokens=data.get("applied_tokens", []),
+            reanonymize_override=data.get("reanonymize_override", False),
+            override_reason=data.get("override_reason", ""),
+            override_user=data.get("override_user", ""),
+            override_timestamp=data.get("override_timestamp", ""),
+            previous_output_hash=data.get("previous_output_hash", ""),
+            override_events=data.get("override_events", []),
+        )
 
 
 @dataclass
@@ -193,7 +227,7 @@ class VaultData:
     model_hashes: dict[str, str] = field(default_factory=dict)
 
     # Token format version
-    token_abi_version: str = "v1"
+    token_abi_version: str = "v2"
 
     def to_dict(self) -> dict:
         return {
@@ -332,6 +366,30 @@ class ReplacementRecord:
     entity_type: EntityType
 
 
+class Clock(Protocol):
+    """Clock abstraction to support deterministic replay tests."""
+
+    def now_iso(self) -> str:
+        """Return current UTC time as ISO 8601 string."""
+
+
+class SystemClock:
+    """Production clock implementation."""
+
+    def now_iso(self) -> str:
+        return datetime.now(timezone.utc).isoformat()
+
+
+class FrozenClock:
+    """Deterministic clock for replay and tests."""
+
+    def __init__(self, fixed_time: str):
+        self._fixed_time = fixed_time
+
+    def now_iso(self) -> str:
+        return self._fixed_time
+
+
 def now_iso() -> str:
     """Return current UTC time as ISO 8601 string."""
-    return datetime.now(timezone.utc).isoformat()
+    return SystemClock().now_iso()
