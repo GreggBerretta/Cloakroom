@@ -16,6 +16,7 @@ from cowork_shield.clipboard.operations import (
 )
 from cowork_shield.detection.engine import HEBREW_BACKEND_CHOICES, LANGUAGE_CHOICES
 from cowork_shield.handlers.column_select import parse_columns_option
+from cowork_shield.ipc.server import IPCServer
 from cowork_shield.exceptions import CoWorkShieldError
 from cowork_shield.pipeline.anonymize import AnonymizePipeline
 from cowork_shield.pipeline.columns import inspect_columns
@@ -438,6 +439,29 @@ def restore_clipboard_cmd(workspace):
     except CoWorkShieldError as e:
         _show_error(e)
         raise SystemExit(1)
+
+
+@main.command("ipc-server")
+@click.option(
+    "--socket-path",
+    type=click.Path(),
+    default=str(Path.home() / ".cowork-shield" / "ipc" / "engine.sock"),
+    show_default=True,
+    help="UNIX domain socket path for wrapper IPC.",
+)
+def ipc_server_cmd(socket_path):
+    """Run the AF_UNIX IPC daemon used by the Swift wrapper."""
+    server = IPCServer(socket_path)
+    try:
+        console.print(f"[cyan]Starting IPC server:[/] {Path(socket_path).expanduser()}")
+        server.serve_forever()
+    except KeyboardInterrupt:
+        console.print("\n[yellow]IPC server interrupted.[/]")
+    except CoWorkShieldError as e:
+        _show_error(e)
+        raise SystemExit(1)
+    finally:
+        server.stop()
 
 
 @main.group("workspace")

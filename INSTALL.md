@@ -1,6 +1,6 @@
 # CoWork Shield Internal Install (HANDOFF B)
 
-This install path is for the HANDOFF B internal validation build (no Swift/IPC).
+This install path is for the HANDOFF B internal validation build plus the Phase 2+ wrapper-core/IPC layer.
 
 ## Distribution Strategy
 Current recommendation:
@@ -54,6 +54,12 @@ Expected:
 - CLI version prints successfully
 - Test suite passes
 - EC-15 state integrity gate passes
+
+Wrapper-core invariant check:
+```bash
+cd wrapper/CoWorkShieldWrapper
+swift run wrapper-invariant-checks
+```
 
 ## Usage Quick Start
 ```bash
@@ -132,6 +138,17 @@ uv run cowork-shield shield-clipboard -w client-a
 uv run cowork-shield restore-clipboard -w client-a
 uv run cowork-shield shield-clipboard -w client-a --language he
 ```
+
+## IPC Daemon (Swift Wrapper Bridge)
+Start the AF_UNIX IPC server:
+```bash
+uv run cowork-shield ipc-server --socket-path ~/.cowork-shield/ipc/engine.sock
+```
+
+Notes:
+- Socket file permissions are set to `600`.
+- Messages use `[8-byte big-endian length][JSON payload]` framing.
+- Intended for wrapper-managed lifecycle (no silent restarts).
 
 ## Language Support
 - Supported detection languages: `auto`, `en`, `he`

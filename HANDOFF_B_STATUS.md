@@ -2,7 +2,7 @@
 
 **Status Date:** February 22, 2026  
 **Status Basis:** `HANDOFF_B.md` + `PRD_HANDOFF_B.md`  
-**Scope:** Internal validation track (lean CLI, no Swift/IPC)
+**Scope:** Internal validation track + Phase 2+ wrapper core/protocol implementation
 
 ## 1) Snapshot Context
 - Source repo: [GreggBerretta/cowork-shield](https://github.com/GreggBerretta/cowork-shield)
@@ -41,9 +41,13 @@ This document is intended to be sufficient for another engineer to continue with
 - Column-only mode and combined mode (`--detect-pii`) are both supported.
 - TUI and Gradio now expose spreadsheet column selection workflows.
 - Column inspection now surfaces lightweight type hints and sample values for safer selection.
+- AF_UNIX IPC daemon with strict envelope/framing validation is implemented.
+- Wrapper-oriented IPC operations (HELLO/HEARTBEAT/file/clipboard/workspace/key/stats/inspect) are implemented.
+- Swift wrapper core package is implemented (`wrapper/CoWorkShieldWrapper`) with FSM, protocol validation, framing, clipboard guard, and anti-false-success gate.
+- Wrapper invariant harness (`swift run wrapper-invariant-checks`) is implemented and passing.
 
 ### Validation
-- Full test suite: **226 passed**.
+- Full test suite: **242 passed**.
 - EC-15 suite: **14 passed**.
 - Fork-only bootstrap validation (Feb 22, 2026):
   - `en_core_web_lg` installed in local fork clone.
@@ -96,6 +100,7 @@ This document is intended to be sufficient for another engineer to continue with
 - `cowork-shield anonymize FILE -w WORKSPACE`
 - `cowork-shield anonymize FILE -w WORKSPACE --columns ...`
 - `cowork-shield inspect-columns FILE`
+- `cowork-shield ipc-server --socket-path ...`
 - `cowork-shield restore FILE -w WORKSPACE`
 - `cowork-shield shield-clipboard -w WORKSPACE`
 - `cowork-shield restore-clipboard -w WORKSPACE`
@@ -105,6 +110,7 @@ This document is intended to be sufficient for another engineer to continue with
 - `cowork-shield workspace cleanup`
 - `cowork-shield-tui` (Textual terminal UI)
 - `cowork-shield-gradio` (Gradio web UI)
+- `swift run wrapper-invariant-checks` (wrapper invariant harness)
 
 ### Safety / Recovery Commands
 - `cowork-shield workspace export-key --workspace NAME --output FILE`
@@ -134,6 +140,7 @@ This document is intended to be sufficient for another engineer to continue with
 - Vault/recovery crypto and persistence: `tests/test_vault/`
 - EC-15 (release-blocking state integrity): `tests/test_state_integrity/test_ec15_state_integrity.py`
 - UI API helper coverage: `tests/test_ui/`
+- IPC protocol/framing/server: `tests/test_ipc/`
 
 ### EC-15 Coverage (Current)
 - Crash consistency
@@ -194,7 +201,7 @@ This document is intended to be sufficient for another engineer to continue with
 ## 10) Go/No-Go Matrix (Current)
 | Criterion | Status | Evidence |
 | --- | --- | --- |
-| Full Test Suite | ✅ | `226 passed` |
+| Full Test Suite | ✅ | `242 passed` |
 | Fork-Only English Bootstrap | ✅ | `en_core_web_lg` installed; detection + EC-15 smoke = `29 passed` |
 | Fork-Only Full Suite Prereq | ⚠️ | Hebrew model still required for full suite (`he_core_news_sm` or fallback) |
 | EC-15 State Integrity | ✅ | `14 passed` |

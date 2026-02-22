@@ -39,6 +39,7 @@ pdf_docling = [
 cowork-shield = "cowork_shield.cli:main"
 cowork-shield-tui = "cowork_shield.tui.app:run"
 cowork-shield-gradio = "cowork_shield.ui.gradio_app:launch"
+cowork-shield-ipc = "cowork_shield.ipc.server:main"
 
 [build-system]
 requires = ["hatchling"]

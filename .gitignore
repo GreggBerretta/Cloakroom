@@ -36,3 +36,7 @@ uv.lock
 
 # Claude
 .claude/
+
+# SwiftPM
+.build/
+wrapper/CoWorkShieldWrapper/.build/

@@ -14,6 +14,7 @@ Common examples:
 - `ModelHashMismatchError`: model lock mismatch
 - `HallucinationDetectedError`: mutated/hallucinated/dropped token detected
 - `ColumnSelectionError`: invalid/missing spreadsheet column selection
+- `IPCError`: IPC framing/envelope/protocol validation failure
 - `WorkspaceExpiredError`: workspace TTL elapsed
 - `RecoveryKeyError`: bad or wrong-passphrase recovery key payload
 - `WorkspaceNotFoundError`: workspace metadata/key not found
@@ -48,6 +49,16 @@ Do not share:
 
 If restore failure involves anonymized output (tokenized only), file sharing is generally acceptable.
 If anonymization failure involves live data, manually redact first.
+
+## 2b) IPC / Wrapper Hard-Fail Conditions
+If wrapper integration reports protocol hard-fail:
+- Verify daemon is running:
+```bash
+uv run cowork-shield ipc-server --socket-path ~/.cowork-shield/ipc/engine.sock
+```
+- Confirm wrapper and engine agree on protocol/schema hash via `HELLO`.
+- Confirm socket permissions remain `600`.
+- Any partial/malformed frame is a hard-fail by design; restart wrapper and daemon after correction.
 
 ## 2a) Column Selection Errors (CSV/XLSX)
 Typical causes:

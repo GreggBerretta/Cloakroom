@@ -8,6 +8,7 @@
 ## 1) Purpose
 HANDOFF B defines the lean internal build focused on trust invariants, deterministic replay, and practical consultant workflows.  
 This build intentionally removes product-layer surface area (Swift/IPC/GUI) and hardens the reversible core.
+For Phase 2+ wrapper reintegration, see `WRAPPER_ARCHITECTURE_ADDENDUM.md` (which supersedes the Swift/IPC out-of-scope lines in this document for wrapper workstreams).
 
 ## 2) Scope (In)
 - Python CLI only (`uv`-managed environment).
@@ -55,7 +56,7 @@ uv run cowork-shield workspace show WORKSPACE
 ```
 
 ## 7) Validation Status
-- Full test suite passing: **156 passed**.
+- Full test suite passing: **242 passed**.
 - EC-15 state integrity harness added:
   - `tests/test_state_integrity/test_ec15_state_integrity.py`
   - Run directly: `uv run pytest -q tests/test_state_integrity/test_ec15_state_integrity.py`
