@@ -14,6 +14,8 @@ from cowork_shield.exceptions import (
     IntegrityError,
     KeychainError,
     ModelHashMismatchError,
+    PdfExtractionError,
+    PdfInputOnlyError,
     ReplayMismatchError,
     UnsupportedFormatError,
     WorkspaceExpiredError,
@@ -40,7 +42,14 @@ def sanitize_ui_error(exc: Exception) -> tuple[str, str]:
     code = exc.__class__.__name__
 
     if isinstance(exc, UnsupportedFormatError):
-        return code, "Unsupported format. Use CSV, XLSX, DOCX, or TXT."
+        return code, "Unsupported format. Use PDF, CSV, XLSX, DOCX, TXT, or MD."
+    if isinstance(exc, PdfExtractionError):
+        return code, "PDF extraction failed. Install Docling or PyMuPDF and retry."
+    if isinstance(exc, PdfInputOnlyError):
+        return (
+            code,
+            "PDF is input-only. Restore from tokenized Markdown (.md) or DOCX (.docx).",
+        )
     if isinstance(exc, DetectionError):
         return code, "PII detection failed. Verify language model installation and retry."
     if isinstance(exc, WorkspaceNotFoundError):
@@ -114,6 +123,7 @@ def anonymize_file(
     score_threshold: float = 0.7,
     language: str = "auto",
     allow_lossy_xlsx: bool = False,
+    pdf_output_format: str = "md",
     force_reanonymize: bool = False,
     reason: str = "",
 ) -> UIOperationResult:
@@ -137,6 +147,7 @@ def anonymize_file(
         override_reason=reason,
         override_user="ui",
         allow_lossy_xlsx=allow_lossy_xlsx,
+        pdf_output_format=pdf_output_format,
     )
     result = pipeline.run(input_path, out_path)
 
@@ -144,6 +155,11 @@ def anonymize_file(
         f"Anonymized {result.input_path.name} -> {result.output_path.name}. "
         f"Entities: {result.entities_found}. Tokens: {result.tokens_applied}."
     )
+    if input_path.suffix.lower() == ".pdf":
+        summary += (
+            " PDF is input-only: output is extracted Markdown/DOCX; "
+            "the original PDF binary is not reconstructed."
+        )
     return UIOperationResult(
         path=str(result.output_path),
         summary=summary,
@@ -213,8 +229,14 @@ def _read_supported_text(path: Path) -> str:
     suffix = path.suffix.lower()
     if suffix == ".txt":
         return path.read_text(encoding="utf-8", errors="replace")
+    if suffix == ".md":
+        return path.read_text(encoding="utf-8", errors="replace")
     if suffix == ".csv":
         return path.read_text(encoding="utf-8-sig", errors="replace")
+    if suffix == ".pdf":
+        from cowork_shield.extractors.pdf_markdown import extract_pdf_to_markdown
+
+        return extract_pdf_to_markdown(path)
     if suffix == ".docx":
         from docx import Document
 

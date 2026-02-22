@@ -1,6 +1,7 @@
 """Tests for the plain text handler."""
 
 import os
+from pathlib import Path
 
 from cowork_shield.models import DetectedEntity, EntityType
 from cowork_shield.handlers.text_handler import TextHandler
@@ -38,6 +39,11 @@ class FakeDetectionEngine:
 
 
 class TestTextHandler:
+    def test_can_handle_txt_and_md(self):
+        assert TextHandler.can_handle(Path("notes.txt"))
+        assert TextHandler.can_handle(Path("notes.md"))
+        assert not TextHandler.can_handle(Path("notes.pdf"))
+
     def test_round_trip(self, tmp_path):
         handler = TextHandler()
         detection = FakeDetectionEngine()

@@ -60,7 +60,13 @@ Expected:
 uv run cowork-shield anonymize ./sample.txt -w client-a
 uv run cowork-shield restore ./sample.anonymized.txt -w client-a
 uv run cowork-shield anonymize ./hebrew.txt -w client-a --language he
+uv run cowork-shield anonymize ./brief.pdf -w client-a --pdf-output-format md
 ```
+
+PDF note:
+- PDF is input-only.
+- CoWork Shield extracts PDF content to Markdown, then anonymizes that extracted text.
+- Restore operates on tokenized `.md` or `.docx` outputs, not on `.pdf`.
 
 First workspace sanity check:
 ```bash
@@ -101,6 +107,7 @@ Features:
 - Risky overrides are gated with explicit confirmation:
   - `allow-lossy-xlsx`
   - `force-reanonymize` (requires a non-empty reason)
+- PDF files are input-only and output as `.md` or `.docx`; original PDF binaries are never reconstructed.
 
 Clipboard flow:
 ```bash
@@ -156,6 +163,21 @@ Environment variable equivalents:
 ```bash
 export CWS_HEBREW_NLP_ENGINE=transformers
 export CWS_HEBREW_TRANSFORMER_MODEL=CordwainerSmith/GolemPII-v1
+```
+
+## PDF Extraction Backends
+Default behavior:
+- Docling-first extraction if installed.
+- Automatic fallback to PyMuPDF.
+
+Install Docling support (recommended for better layout fidelity):
+```bash
+uv sync --extra pdf_docling
+```
+
+Verify PyMuPDF fallback is available:
+```bash
+uv run python -c "import fitz; print('PyMuPDF OK')"
 ```
 
 ## Key Recovery (Admin)

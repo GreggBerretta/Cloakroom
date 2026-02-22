@@ -32,9 +32,11 @@ This document is intended to be sufficient for another engineer to continue with
 - UI error handling is sanitized to avoid echoing sensitive payloads/tokens.
 - Multi-language detection is implemented (`auto`, `en`, `he`) with Hebrew model fallback support.
 - Hebrew enhancement backends are implemented (`spacy`, `stanza`, `transformers`) with GolemPII model override support.
+- PDF support is implemented as input-only (PDF -> extracted Markdown/DOCX -> anonymize/restore on text outputs).
+- Direct PDF restore is explicitly blocked with fail-closed error messaging.
 
 ### Validation
-- Full test suite: **176 passed**.
+- Full test suite: **184 passed**.
 - EC-15 suite: **14 passed**.
 
 ## 3) Where Everything Sits
@@ -60,6 +62,7 @@ This document is intended to be sufficient for another engineer to continue with
 - Token regex contract: `src/cowork_shield/tokenizer/patterns.py`
 - Verification scanner: `src/cowork_shield/verification/verifier.py`
 - Detection engine + model hash: `src/cowork_shield/detection/engine.py`
+- PDF extractor abstraction: `src/cowork_shield/extractors/pdf_markdown.py`
 
 ### New Feature Modules
 - Clipboard workflows: `src/cowork_shield/clipboard/operations.py`
@@ -70,6 +73,7 @@ This document is intended to be sufficient for another engineer to continue with
 - UI pipeline wrapper API: `src/cowork_shield/pipeline/ui_api.py`
 - Textual UI: `src/cowork_shield/tui/app.py`
 - Gradio UI: `src/cowork_shield/ui/gradio_app.py`
+- PDF input-only handler: `src/cowork_shield/handlers/pdf_handler.py`
 
 ### CI / Automation
 - Main CI: `.github/workflows/ci.yml`
@@ -96,6 +100,7 @@ This document is intended to be sufficient for another engineer to continue with
 ### Important Flags
 - `--force-reanonymize --reason "..."` (audited override)
 - `--allow-lossy-xlsx` (explicit XLSX lossy-content acknowledgment)
+- `--pdf-output-format md|docx` (required choice when input is PDF)
 - `--language auto|en|he` (detection language selection)
 - `--hebrew-backend auto|spacy|stanza|transformers` (Hebrew NLP backend selection)
 - `--hebrew-transformer-model MODEL_ID` (override specialized Hebrew transformers model)
@@ -108,7 +113,7 @@ This document is intended to be sufficient for another engineer to continue with
 ### Key Test Areas
 - Core pipeline: `tests/test_pipeline/`
 - Token ABI/generation/restore behavior: `tests/test_tokenizer/`
-- Handlers (CSV/XLSX/DOCX/TXT): `tests/test_handlers/`
+- Handlers (PDF/CSV/XLSX/DOCX/TXT/MD): `tests/test_handlers/`
 - Hallucination detection: `tests/test_hallucination/`
 - Clipboard operations: `tests/test_clipboard/`
 - Vault/recovery crypto and persistence: `tests/test_vault/`

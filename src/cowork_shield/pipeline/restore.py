@@ -10,6 +10,7 @@ from cowork_shield.exceptions import (
     HallucinationDetectedError,
     IncompleteRestorationError,
     IntegrityError,
+    PdfInputOnlyError,
     UnsupportedFormatError,
 )
 from cowork_shield.hallucination.detector import detect_token_anomalies
@@ -49,6 +50,8 @@ class RestorePipeline:
 
         with self._ctx.operation_lock():
             suffix = input_path.suffix.lower()
+            if suffix == ".pdf":
+                raise PdfInputOnlyError()
             handler_cls = HANDLER_MAP.get(suffix)
             if handler_cls is None:
                 raise UnsupportedFormatError(suffix)

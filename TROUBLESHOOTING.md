@@ -19,6 +19,8 @@ Common examples:
 
 UI-specific examples:
 - `UnsupportedFormatError`: file extension not currently handled by pipeline
+- `PdfExtractionError`: PDF extraction backend unavailable or extraction failed
+- `PdfInputOnlyError`: attempted to restore from `.pdf` instead of tokenized `.md`/`.docx`
 - `CoWorkShieldError`: generic surfaced error in TUI/Gradio operation wrapper
 - `DetectionError`: language model missing or Presidio detection initialization/analysis failure
 
@@ -36,7 +38,7 @@ Also collect:
 - command run
 - timestamp
 - full error line (including exception code)
-- whether file was CSV/XLSX/DOCX/TXT/clipboard
+- whether file was PDF/CSV/XLSX/DOCX/TXT/MD/clipboard
 
 Do not share:
 - original client files with live PII
@@ -106,7 +108,23 @@ If port is in use, launch manually with a custom port:
 uv run python -c "from cowork_shield.ui.gradio_app import create_demo; create_demo().launch(server_name='127.0.0.1', server_port=7861)"
 ```
 
-## 7) Hebrew Detection Issues
+## 7) PDF Extraction Issues
+PDF behavior:
+- Input-only format: anonymize from `.pdf`, restore from `.md`/`.docx`.
+- The app does not reconstruct original PDF binaries.
+
+If PDF anonymize fails with `PdfExtractionError`:
+```bash
+# Ensure fallback backend exists
+uv run python -c "import fitz; print('PyMuPDF OK')"
+
+# Optional: install Docling for higher fidelity extraction
+uv sync --extra pdf_docling
+```
+
+If you accidentally run restore on `.pdf`, rerun restore against the tokenized Markdown or DOCX output from anonymize.
+
+## 8) Hebrew Detection Issues
 If Hebrew detection fails to initialize:
 ```bash
 uv run python -m spacy download he_core_news_sm || uv run python -m spacy download xx_ent_wiki_sm
@@ -137,7 +155,7 @@ To use the specialized Golem model explicitly:
 uv run cowork-shield anonymize <file> --language he --hebrew-backend transformers --hebrew-transformer-model CordwainerSmith/GolemPII-v1
 ```
 
-## 8) Environment Repair
+## 9) Environment Repair
 If `spacy download` fails with `No module named pip`:
 ```bash
 uv run python -m ensurepip

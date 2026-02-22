@@ -1,12 +1,11 @@
 """Tests for the restoration pipeline with fail-closed verification."""
 
-import os
 from pathlib import Path
 
 import pytest
 
-from cowork_shield.exceptions import IncompleteRestorationError, IntegrityError
-from cowork_shield.models import EntityMapping, EntityType, Token, VaultData, now_iso
+from cowork_shield.exceptions import IntegrityError, PdfInputOnlyError
+from cowork_shield.models import EntityMapping, Token, VaultData, now_iso
 from cowork_shield.pipeline.anonymize import AnonymizePipeline
 from cowork_shield.pipeline.restore import RestorePipeline
 from cowork_shield.tokenizer.generator import TokenGenerator
@@ -179,3 +178,11 @@ class TestRestorePipeline:
         result = restore_pipeline.run(anon_result.output_path)
 
         assert result.output_path.name == "data.restored.csv"
+
+    def test_restore_pdf_rejected_as_input_only(self, workspace_ctx, tmp_path):
+        restore_pipeline = RestorePipeline(workspace_ctx)
+        input_path = tmp_path / "payload.pdf"
+        input_path.write_bytes(b"%PDF-1.4\\n")
+
+        with pytest.raises(PdfInputOnlyError):
+            restore_pipeline.run(input_path, tmp_path / "restored.pdf")

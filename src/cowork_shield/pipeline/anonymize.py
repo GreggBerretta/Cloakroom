@@ -15,6 +15,7 @@ from cowork_shield.exceptions import (
 )
 from cowork_shield.handlers.csv_handler import CsvHandler
 from cowork_shield.handlers.docx import DocxHandler
+from cowork_shield.handlers.pdf_handler import PdfHandler
 from cowork_shield.handlers.text_handler import TextHandler
 from cowork_shield.handlers.xlsx import XlsxHandler
 from cowork_shield.models import Clock, EntityMapping, FileRecord, SystemClock
@@ -26,6 +27,8 @@ HANDLER_MAP = {
     ".csv": CsvHandler,
     ".docx": DocxHandler,
     ".txt": TextHandler,
+    ".md": TextHandler,
+    ".pdf": PdfHandler,
 }
 
 
@@ -58,6 +61,7 @@ class AnonymizePipeline:
         override_reason: str = "",
         override_user: str = "",
         allow_lossy_xlsx: bool = False,
+        pdf_output_format: str = "md",
     ):
         self._ctx = workspace_ctx
         self._clock = clock or SystemClock()
@@ -72,6 +76,7 @@ class AnonymizePipeline:
         self._override_reason = override_reason.strip()
         self._override_user = override_user.strip()
         self._allow_lossy_xlsx = allow_lossy_xlsx
+        self._pdf_output_format = (pdf_output_format or "md").strip().lower()
 
         if self._force_reanonymize and not self._override_reason:
             raise CoWorkShieldError(
@@ -95,11 +100,17 @@ class AnonymizePipeline:
 
             if suffix == ".xlsx":
                 handler = handler_cls(allow_lossy_xlsx=self._allow_lossy_xlsx)
+            elif suffix == ".pdf":
+                handler = handler_cls(pdf_output_format=self._pdf_output_format)
             else:
                 handler = handler_cls()
 
             if output_path is None:
-                output_path = input_path.with_stem(input_path.stem + ".anonymized")
+                if suffix == ".pdf":
+                    output_ext = ".docx" if self._pdf_output_format == "docx" else ".md"
+                    output_path = input_path.with_name(f"{input_path.stem}.anonymized{output_ext}")
+                else:
+                    output_path = input_path.with_stem(input_path.stem + ".anonymized")
 
             backup_path = None
             if suffix == ".xlsx":

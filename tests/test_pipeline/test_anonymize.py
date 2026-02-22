@@ -1,13 +1,13 @@
 """Tests for the anonymization pipeline."""
 
-import os
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
 from cowork_shield.exceptions import UnsupportedFormatError
+from cowork_shield.extractors.pdf_markdown import PDFExtractionResult
 from cowork_shield.models import VaultData, now_iso
+from cowork_shield.handlers import pdf_handler
 from cowork_shield.pipeline.anonymize import AnonymizePipeline
 from cowork_shield.tokenizer.generator import TokenGenerator
 from cowork_shield.vault.crypto import derive_hmac_key, generate_master_key
@@ -78,11 +78,55 @@ class TestAnonymizePipeline:
 
     def test_unsupported_format(self, workspace_ctx, tmp_path):
         pipeline = AnonymizePipeline(workspace_ctx)
-        dummy = tmp_path / "file.pdf"
+        dummy = tmp_path / "file.pptx"
         dummy.write_text("dummy")
 
         with pytest.raises(UnsupportedFormatError):
             pipeline.run(dummy)
+
+    def test_anonymize_pdf_to_markdown(self, workspace_ctx, tmp_path, monkeypatch):
+        monkeypatch.setattr(
+            pdf_handler.PDFExtractor,
+            "extract",
+            lambda self, _: PDFExtractionResult(
+                markdown="Contact John Smith at john@example.com",
+                backend="test",
+            ),
+        )
+
+        pipeline = AnonymizePipeline(workspace_ctx, score_threshold=0.5)
+        input_path = tmp_path / "brief.pdf"
+        input_path.write_bytes(b"%PDF-1.4\\n% test\\n")
+
+        result = pipeline.run(input_path)
+
+        assert result.output_path.name == "brief.anonymized.md"
+        assert result.output_path.exists()
+        assert "[PERSON_" in result.output_path.read_text(encoding="utf-8")
+        assert workspace_ctx.vault_data.file_records[-1].format == "pdf->md"
+
+    def test_anonymize_pdf_to_docx(self, workspace_ctx, tmp_path, monkeypatch):
+        monkeypatch.setattr(
+            pdf_handler.PDFExtractor,
+            "extract",
+            lambda self, _: PDFExtractionResult(
+                markdown="# Memo\\n\\nJane Roe spoke with Bob Lee.",
+                backend="test",
+            ),
+        )
+
+        pipeline = AnonymizePipeline(
+            workspace_ctx,
+            score_threshold=0.5,
+            pdf_output_format="docx",
+        )
+        input_path = tmp_path / "memo.pdf"
+        input_path.write_bytes(b"%PDF-1.4\\n% test\\n")
+
+        result = pipeline.run(input_path)
+
+        assert result.output_path.name == "memo.anonymized.docx"
+        assert result.output_path.exists()
 
     def test_vault_persisted_after_anonymize(self, workspace_ctx, tmp_path):
         pipeline = AnonymizePipeline(workspace_ctx, score_threshold=0.5)

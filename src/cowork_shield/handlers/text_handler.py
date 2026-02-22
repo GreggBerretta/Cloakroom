@@ -19,7 +19,7 @@ class TextHandler:
 
     @staticmethod
     def can_handle(file_path: Path) -> bool:
-        return file_path.suffix.lower() == ".txt"
+        return file_path.suffix.lower() in {".txt", ".md"}
 
     def anonymize(
         self,
@@ -44,6 +44,7 @@ class TextHandler:
             source_file=source_file,
         )
         output_path.write_text(replaced_text, encoding="utf-8")
+        suffix = input_path.suffix.lower().lstrip(".") or "txt"
 
         file_record = FileRecord(
             file_path=str(input_path),
@@ -53,7 +54,7 @@ class TextHandler:
             entities_found=len(entities),
             tokens_applied=len(records),
             timestamp=now_iso(),
-            format="txt",
+            format=suffix,
             applied_tokens=sorted({record.token_text for record in records}),
         )
         return records, file_record

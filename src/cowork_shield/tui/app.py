@@ -102,7 +102,14 @@ class CoWorkShieldApp(App[None]):
                 id="workspace",
                 allow_blank=False,
             )
-            yield Input(placeholder="Path to file (CSV/XLSX/DOCX/TXT)", id="file_path")
+            yield Input(placeholder="Path to file (PDF/CSV/XLSX/DOCX/TXT/MD)", id="file_path")
+            yield Static("PDF Output Format (input-only PDF pipeline)")
+            yield Select(
+                [("Markdown (.md)", "md"), ("Word (.docx)", "docx")],
+                value="md",
+                id="pdf_output_format",
+                allow_blank=False,
+            )
             yield Static("Language")
             yield Select(
                 [("Auto", "auto"), ("English", "en"), ("Hebrew", "he")],
@@ -166,6 +173,7 @@ class CoWorkShieldApp(App[None]):
             return
         workspace = self._selected_workspace()
         language = self._selected_language()
+        pdf_output_format = self._selected_pdf_output_format()
         allow_lossy_xlsx = self.query_one("#allow_lossy_xlsx", Checkbox).value
         force_reanonymize = self.query_one("#force_reanonymize", Checkbox).value
         override_reason = (self.query_one("#override_reason", Input).value or "").strip()
@@ -192,6 +200,7 @@ class CoWorkShieldApp(App[None]):
                 path,
                 workspace,
                 language=language,
+                pdf_output_format=pdf_output_format,
                 allow_lossy_xlsx=allow_lossy_xlsx,
                 force_reanonymize=force_reanonymize,
                 reason=override_reason,
@@ -244,6 +253,13 @@ class CoWorkShieldApp(App[None]):
         value = select.value
         if value in (None, Select.BLANK):
             return "auto"
+        return str(value)
+
+    def _selected_pdf_output_format(self) -> str:
+        select = self.query_one("#pdf_output_format", Select)
+        value = select.value
+        if value in (None, Select.BLANK):
+            return "md"
         return str(value)
 
     def _set_status(self, message: str) -> None:

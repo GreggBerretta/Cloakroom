@@ -29,6 +29,7 @@ def shield(
     uploaded_file,
     workspace,
     language,
+    pdf_output_format,
     allow_lossy_xlsx,
     force_reanonymize,
     override_reason,
@@ -61,6 +62,7 @@ def shield(
             input_path,
             workspace_name,
             language=language_value,
+            pdf_output_format=(pdf_output_format or "md").strip().lower(),
             allow_lossy_xlsx=bool(allow_lossy_xlsx),
             force_reanonymize=bool(force_reanonymize),
             reason=reason,
@@ -95,6 +97,7 @@ def create_demo() -> gr.Blocks:
             """
             # CoWork Shield Web UI
             Upload a file, choose a workspace, then anonymize or restore.
+            PDF files are input-only and are converted to Markdown/DOCX output.
             """
         )
         gr.Markdown(
@@ -116,6 +119,11 @@ def create_demo() -> gr.Blocks:
                 choices=["auto", "en", "he"],
                 value="auto",
                 label="Detection Language",
+            )
+            pdf_output_format = gr.Dropdown(
+                choices=["md", "docx"],
+                value="md",
+                label="PDF output format (input-only PDF pipeline)",
             )
             allow_lossy_xlsx = gr.Checkbox(
                 label="Allow lossy XLSX processing (--allow-lossy-xlsx)",
@@ -146,6 +154,7 @@ def create_demo() -> gr.Blocks:
                     shield_file,
                     shield_workspace,
                     shield_language,
+                    pdf_output_format,
                     allow_lossy_xlsx,
                     force_reanonymize,
                     override_reason,

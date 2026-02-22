@@ -109,3 +109,17 @@ class RecoveryKeyError(CoWorkShieldError):
 
 class IPCError(CoWorkShieldError):
     """IPC protocol communication error."""
+
+
+class PdfExtractionError(CoWorkShieldError):
+    """PDF extraction failed before anonymization."""
+
+
+class PdfInputOnlyError(CoWorkShieldError):
+    """PDF is an input-only format and cannot be restored directly."""
+
+    def __init__(self):
+        super().__init__(
+            "PDF is input-only. Restore from tokenized Markdown (.md) or DOCX (.docx), "
+            "not from .pdf."
+        )

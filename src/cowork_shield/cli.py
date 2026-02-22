@@ -100,6 +100,13 @@ def main():
     help="Allow XLSX processing even when chart/image loss risk is detected.",
 )
 @click.option(
+    "--pdf-output-format",
+    type=click.Choice(["md", "docx"], case_sensitive=False),
+    default="md",
+    show_default=True,
+    help="Output format when input file is PDF (PDF is input-only).",
+)
+@click.option(
     "--force-reanonymize",
     is_flag=True,
     help="Override deterministic/model lock checks (requires --reason).",
@@ -121,6 +128,7 @@ def anonymize(
     hebrew_stanza_model,
     hebrew_transformer_model,
     allow_lossy_xlsx,
+    pdf_output_format,
     force_reanonymize,
     reason,
 ):
@@ -135,6 +143,7 @@ def anonymize(
         cowork-shield anonymize data.csv -w client-acme
         cowork-shield anonymize contract.docx -o contract.safe.docx
         cowork-shield anonymize notes.txt --language he
+        cowork-shield anonymize intake.pdf --pdf-output-format md
     """
     try:
         if force_reanonymize and not reason.strip():
@@ -159,6 +168,7 @@ def anonymize(
             override_reason=reason,
             override_user=getpass.getuser(),
             allow_lossy_xlsx=allow_lossy_xlsx,
+            pdf_output_format=pdf_output_format.lower(),
         )
         result = pipeline.run(input_path, output_path)
 
@@ -172,6 +182,11 @@ def anonymize(
             console.print(f"  Override:  [yellow]ON[/] ({reason.strip()})")
         if result.backup_path:
             console.print(f"  Backup:    {result.backup_path}")
+        if input_path.suffix.lower() == ".pdf":
+            console.print(
+                "  Note:      [yellow]PDF is input-only[/]. Output is extracted "
+                "Markdown/DOCX and original PDF layout is not reconstructed."
+            )
         console.print()
 
     except CoWorkShieldError as e:
@@ -201,6 +216,7 @@ def restore(file, output, workspace):
     Examples:
         cowork-shield restore report.anonymized.xlsx
         cowork-shield restore data.csv -w client-acme
+        cowork-shield restore intake.anonymized.md -w client-acme
     """
     try:
         mgr = WorkspaceManager()
