@@ -1,66 +1,166 @@
-# CoWork Shield — HANDOFF B Status
+# CoWork Shield — HANDOFF B Status (Engineer Transfer)
 
-**Date:** February 22, 2026  
-**Status Basis:** `HANDOFF_B.md` and `PRD_HANDOFF_B.md`  
+**Status Date:** February 22, 2026  
+**Status Basis:** `HANDOFF_B.md` + `PRD_HANDOFF_B.md`  
 **Scope:** Internal validation track (lean CLI, no Swift/IPC)
 
-## Executive Status
-HANDOFF B core hardening is implemented and test-verified locally.
+## 1) Snapshot Context
+- Source repo: [GreggBerretta/cowork-shield](https://github.com/GreggBerretta/cowork-shield)
+- Fork repo: [GreggBerretta/cowork-shield-fork](https://github.com/GreggBerretta/cowork-shield-fork)
+- Active integration branch: `codex/handoff-b-status-doc`
+- Snapshot commit: `d33a8b7`
+- Pilot kickoff issue: [#1](https://github.com/GreggBerretta/cowork-shield/issues/1)
+- Pilot milestone: `Pilot Kickoff Week (2026-02-23)`
 
-- Deterministic replay is enforced by default.
-- Detection model lock is enforced by default.
-- Token ABI v2 (`[TYPE_00001]`) is active with legacy restore compatibility.
-- XLSX lossy-risk is blocked unless explicitly acknowledged.
-- Auditable override path is implemented (`--force-reanonymize --reason ...`).
-- Hallucination/mutation/dropped-token restore checks are fail-closed.
-- TXT and clipboard workflows are implemented.
-- EC-15 State Integrity Gate harness has been added.
-- CI workflows are added for per-push and weekly trust-gate execution.
-- Operational docs are added (`INSTALL.md`, `TROUBLESHOOTING.md`).
-- Encrypted key recovery export/import commands are added for admin recovery.
+This document is intended to be sufficient for another engineer to continue without additional tribal context.
 
-## Validation Snapshot
-Latest local validation:
+## 2) Current Delivery Status
+### Completed
+- Deterministic replay enforcement is default (fail-closed).
+- Detection model hash lock enforcement is default.
+- Token ABI v2 (`[TYPE_00001]`) is active; legacy token restore compatibility is retained.
+- XLSX lossy-content risk (charts/images) is blocked unless explicitly acknowledged.
+- Auditable safety overrides are implemented (`--force-reanonymize --reason ...`).
+- Hallucination/mutation/dropped-token checks run before restore commit (fail-closed).
+- TXT handler and clipboard shield/restore workflows are implemented.
+- EC-15 state integrity harness is implemented.
+- CI workflows and weekly trust gate workflows are present.
+- Operational docs are present (`INSTALL.md`, `TROUBLESHOOTING.md`).
+- Encrypted key recovery export/import commands are implemented.
 
-- Full suite: **156 passed**
-- EC-15 suite: **14 passed** (`tests/test_state_integrity/test_ec15_state_integrity.py`)
+### Validation
+- Full test suite: **162 passed**.
+- EC-15 suite: **14 passed**.
 
-EC-15 currently covers:
+## 3) Where Everything Sits
+### Product/Scope Docs
+- `HANDOFF.md` (full commercial path)
+- `HANDOFF_B.md` (lean internal path)
+- `PRD_HANDOFF_B.md` (validation PRD)
+- `HANDOFF_B_STATUS.md` (this document)
+- `PILOT_KICKOFF.md` (kickoff plan and agenda)
 
-- Crash consistency (anonymize/restore/vault write interruption)
-- Filesystem hostility (rename/move/encoding rewrite)
-- Concurrency safety (parallel restore + clipboard burst)
-- Vault integrity (mapping corruption, partial metadata deletion, TTL expiry)
-- Environment edges (sleep/wake interruption simulation, clock skew bounds, disk-full rollback)
+### Operational Docs
+- `INSTALL.md` (installation + onboarding)
+- `TROUBLESHOOTING.md` (support runbook + escalation)
 
-## Completed vs HANDOFF B
-Completed from HANDOFF B priorities:
+### Core Engine (Source)
+- CLI commands: `src/cowork_shield/cli.py`
+- Anonymize orchestration: `src/cowork_shield/pipeline/anonymize.py`
+- Restore orchestration: `src/cowork_shield/pipeline/restore.py`
+- Workspace lifecycle + locks + TTL checks: `src/cowork_shield/workspace/manager.py`
+- Token generation (ABI v2): `src/cowork_shield/tokenizer/generator.py`
+- Token replacement and legacy compatibility: `src/cowork_shield/tokenizer/replacer.py`
+- Token regex contract: `src/cowork_shield/tokenizer/patterns.py`
+- Verification scanner: `src/cowork_shield/verification/verifier.py`
+- Detection engine + model hash: `src/cowork_shield/detection/engine.py`
 
-- Core invariants hardened in pipelines and workspace context
-- Determinism + model lock + override auditing
-- Token ABI hardening
-- TXT + clipboard workflow support
-- Hallucination fail-closed integration
-- EC-15 test harness integration
+### New Feature Modules
+- Clipboard workflows: `src/cowork_shield/clipboard/operations.py`
+- Hallucination detection: `src/cowork_shield/hallucination/detector.py`
+- Hallucination formatting: `src/cowork_shield/hallucination/formatter.py`
+- TXT handler: `src/cowork_shield/handlers/text_handler.py`
+- Recovery key export/import crypto: `src/cowork_shield/vault/recovery.py`
 
-## Remaining Work (Next)
-Per HANDOFF B / PRD_HANDOFF_B remaining validation track:
+### CI / Automation
+- Main CI: `.github/workflows/ci.yml`
+- EC-15 per-push gate: `.github/workflows/ec15-gate.yml`
+- Weekly trust gate: `.github/workflows/weekly-trust-gate.yml`
 
-1. Weekly deterministic snapshot drift baseline (golden input/output/vault hashes)
-2. Dependency drift sentinel + conditional full-wave expansion
-3. Week-over-week performance delta monitoring thresholds
-4. Randomized fuzz pass for offset/unicode mutation edge cases
-5. Long-run stability cycles (high-iteration anonymize/restore/open-close/clipboard)
+## 4) Command Surface (Current)
+### Core Commands
+- `cowork-shield anonymize FILE -w WORKSPACE`
+- `cowork-shield restore FILE -w WORKSPACE`
+- `cowork-shield shield-clipboard -w WORKSPACE`
+- `cowork-shield restore-clipboard -w WORKSPACE`
+- `cowork-shield workspace list`
+- `cowork-shield workspace show WORKSPACE`
+- `cowork-shield workspace delete WORKSPACE`
+- `cowork-shield workspace cleanup`
 
-## Risk Posture
-Current risk profile is significantly reduced for trust-critical internal use, but weekly drift and long-run sentinel automation are still required before declaring maintenance-grade trust monitoring complete.
+### Safety / Recovery Commands
+- `cowork-shield workspace export-key --workspace NAME --output FILE`
+- `cowork-shield workspace import-key --workspace NAME --input FILE`
 
-## Pilot Go/No-Go Checklist
-| Criterion | Status | Notes |
+### Important Flags
+- `--force-reanonymize --reason "..."` (audited override)
+- `--allow-lossy-xlsx` (explicit XLSX lossy-content acknowledgment)
+
+## 5) Test Inventory and Execution
+### Primary Commands
+- `uv run pytest -q`
+- `uv run pytest -q tests/test_state_integrity/test_ec15_state_integrity.py`
+
+### Key Test Areas
+- Core pipeline: `tests/test_pipeline/`
+- Token ABI/generation/restore behavior: `tests/test_tokenizer/`
+- Handlers (CSV/XLSX/DOCX/TXT): `tests/test_handlers/`
+- Hallucination detection: `tests/test_hallucination/`
+- Clipboard operations: `tests/test_clipboard/`
+- Vault/recovery crypto and persistence: `tests/test_vault/`
+- EC-15 (release-blocking state integrity): `tests/test_state_integrity/test_ec15_state_integrity.py`
+
+### EC-15 Coverage (Current)
+- Crash consistency
+- Filesystem hostility (rename/move/encoding churn)
+- Concurrency safety
+- Vault integrity failure modes
+- Environment edges (sleep/wake interruption simulation, clock skew, disk full)
+
+## 6) Pilot Operations Status
+### Installation and Onboarding
+- Install flow documented in `INSTALL.md` (uv sync path).
+- Prereqs include model install: `uv run python -m spacy download en_core_web_lg`.
+
+### Support Model
+- Support/error-code handling documented in `TROUBLESHOOTING.md`.
+- Error code = exception class (e.g., `IntegrityError`, `ReplayMismatchError`, `RecoveryKeyError`).
+
+### Pilot Kickoff
+- Scheduled for **Wednesday, February 25, 2026 at 10:00 AM PT**.
+- Agenda and prep are in `PILOT_KICKOFF.md`.
+- Tracked issue: [#1](https://github.com/GreggBerretta/cowork-shield/issues/1).
+
+## 7) Security and Recoverability Posture
+### Enforced
+- Fail-closed restore path.
+- Deterministic replay checks.
+- Model lock checks.
+- HMAC integrity checks for mappings.
+- Auditable safety overrides.
+- Workspace operation serialization via lock.
+
+### Recovery
+- If Keychain entry is lost, recovery requires prior encrypted export.
+- Recovery key exports are passphrase-encrypted and file permissions are set to `0600`.
+
+## 8) Remaining Work (Not Yet Implemented)
+1. Deterministic snapshot baseline drift detection with golden hashes.
+2. Conditional full-wave expansion based on dependency drift deltas.
+3. Week-over-week performance regression thresholds and alerting.
+4. Randomized fuzz pass for offset/unicode mutation edge cases.
+5. Long-run stability campaigns (hundreds of repeated cycles).
+
+## 9) Handoff Checklist for Incoming Engineer
+1. Check out `codex/handoff-b-status-doc`.
+2. Run `uv sync --extra dev`.
+3. Run `uv run python -m ensurepip`.
+4. Run `uv run python -m spacy download en_core_web_lg`.
+5. Run `uv run pytest -q` and confirm green.
+6. Run `uv run pytest -q tests/test_state_integrity/test_ec15_state_integrity.py`.
+7. Review docs in this order: `HANDOFF_B.md`, `PRD_HANDOFF_B.md`, `HANDOFF_B_STATUS.md`, `INSTALL.md`, `TROUBLESHOOTING.md`.
+8. Continue next on weekly drift + performance sentinel implementation.
+
+## 10) Go/No-Go Matrix (Current)
+| Criterion | Status | Evidence |
 | --- | --- | --- |
-| Tests Passing | ✅ | 156/156 |
-| EC-15 Integrity | ✅ | 14/14 |
-| CI Automation | ✅ | `.github/workflows/ci.yml` + weekly gate |
-| Install Docs | ✅ | `INSTALL.md` |
+| Full Test Suite | ✅ | `162 passed` |
+| EC-15 State Integrity | ✅ | `14 passed` |
+| CI Automation | ✅ | `ci.yml`, `ec15-gate.yml`, `weekly-trust-gate.yml` |
+| Install Path | ✅ | `INSTALL.md` |
 | Support Runbook | ✅ | `TROUBLESHOOTING.md` |
-| Key Recovery | ✅ | `workspace export-key` / `workspace import-key` |
+| Key Recovery Path | ✅ | `workspace export-key/import-key` |
+| Weekly Drift Sentinel | ⚠️ Partial | dependency snapshot artifact only |
+| Performance Drift Sentinel | ❌ | not yet implemented |
+| Long-run Stability Campaign | ❌ | not yet implemented |
+
