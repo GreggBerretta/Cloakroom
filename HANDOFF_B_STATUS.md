@@ -28,9 +28,11 @@ This document is intended to be sufficient for another engineer to continue with
 - Operational docs are present (`INSTALL.md`, `TROUBLESHOOTING.md`).
 - Encrypted key recovery export/import commands are implemented.
 - Textual TUI and Gradio Web UI frontends are implemented.
+- UI risky operations now require explicit confirmation gates (lossy XLSX + force re-anonymize).
+- UI error handling is sanitized to avoid echoing sensitive payloads/tokens.
 
 ### Validation
-- Full test suite: **165 passed**.
+- Full test suite: **170 passed**.
 - EC-15 suite: **14 passed**.
 
 ## 3) Where Everything Sits
@@ -138,6 +140,7 @@ This document is intended to be sufficient for another engineer to continue with
 - HMAC integrity checks for mappings.
 - Auditable safety overrides.
 - Workspace operation serialization via lock.
+- Gradio launcher is pinned to localhost binding (`127.0.0.1`).
 
 ### Recovery
 - If Keychain entry is lost, recovery requires prior encrypted export.
@@ -163,7 +166,7 @@ This document is intended to be sufficient for another engineer to continue with
 ## 10) Go/No-Go Matrix (Current)
 | Criterion | Status | Evidence |
 | --- | --- | --- |
-| Full Test Suite | ✅ | `165 passed` |
+| Full Test Suite | ✅ | `170 passed` |
 | EC-15 State Integrity | ✅ | `14 passed` |
 | CI Automation | ✅ | `ci.yml`, `ec15-gate.yml`, `weekly-trust-gate.yml` |
 | Install Path | ✅ | `INSTALL.md` |

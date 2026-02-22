@@ -1,6 +1,6 @@
 # CoWork Shield Internal Install (HANDOFF B)
 
-This install path is for the HANDOFF B internal validation build (CLI-only, no Swift/IPC).
+This install path is for the HANDOFF B internal validation build (no Swift/IPC).
 
 ## Distribution Strategy
 Current recommendation:
@@ -63,6 +63,9 @@ uv run cowork-shield-tui
 
 Inside the TUI:
 - Enter file path and workspace.
+- Risky anonymize overrides require explicit confirmation in-app:
+  - `Allow lossy XLSX`
+  - `Force re-anonymize` (requires non-empty reason)
 - Use buttons or hotkeys:
   - `p` preview entities
   - `a` anonymize
@@ -77,10 +80,14 @@ uv run cowork-shield-gradio
 ```
 
 Default URL: `http://127.0.0.1:7860`
+Security requirement: Gradio must stay bound to `127.0.0.1` only. Do not expose this service externally.
 
 Features:
 - Shield tab: upload file, select workspace, anonymize, download output, review entity table.
 - Restore tab: upload anonymized file, select workspace, restore, download output.
+- Risky overrides are gated with explicit confirmation:
+  - `allow-lossy-xlsx`
+  - `force-reanonymize` (requires a non-empty reason)
 
 Clipboard flow:
 ```bash

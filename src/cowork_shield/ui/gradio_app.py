@@ -7,7 +7,7 @@ from pathlib import Path
 import gradio as gr
 
 from cowork_shield.exceptions import CoWorkShieldError
-from cowork_shield.pipeline import anonymize_file, get_workspaces, restore_file
+from cowork_shield.pipeline import anonymize_file, get_workspaces, restore_file, sanitize_ui_error
 
 
 def _workspace_choices() -> list[str]:
@@ -25,20 +25,47 @@ def _refresh_workspace_dropdown():
     return gr.Dropdown(choices=choices, value=value)
 
 
-def shield(uploaded_file, workspace):
+def shield(
+    uploaded_file,
+    workspace,
+    allow_lossy_xlsx,
+    force_reanonymize,
+    override_reason,
+    confirm_risky_operation,
+):
     if uploaded_file is None:
         return None, "<p><strong>No file uploaded.</strong></p>", "No file uploaded."
+
+    reason = (override_reason or "").strip()
+    if force_reanonymize and not reason:
+        return (
+            None,
+            "<p><strong>Missing override reason.</strong></p>",
+            "Reason is required when force re-anonymize is enabled.",
+        )
+
+    if (allow_lossy_xlsx or force_reanonymize) and not confirm_risky_operation:
+        return (
+            None,
+            "<p><strong>Confirmation required.</strong></p>",
+            "Enable confirmation to proceed with risky anonymize overrides.",
+        )
 
     workspace_name = _normalize_workspace(workspace)
     input_path = Path(uploaded_file.name)
 
     try:
-        result = anonymize_file(input_path, workspace_name)
+        result = anonymize_file(
+            input_path,
+            workspace_name,
+            allow_lossy_xlsx=bool(allow_lossy_xlsx),
+            force_reanonymize=bool(force_reanonymize),
+            reason=reason,
+        )
         return result.path, result.entity_table_html, result.summary
     except (CoWorkShieldError, OSError) as exc:
-        return None, "<p><strong>Failed to anonymize.</strong></p>", (
-            f"{exc.__class__.__name__}: {exc}"
-        )
+        code, message = sanitize_ui_error(exc)
+        return None, "<p><strong>Failed to anonymize.</strong></p>", f"{code}: {message}"
 
 
 def restore(uploaded_file, workspace):
@@ -52,7 +79,8 @@ def restore(uploaded_file, workspace):
         result = restore_file(input_path, workspace_name)
         return result.path, result.summary
     except (CoWorkShieldError, OSError) as exc:
-        return None, f"{exc.__class__.__name__}: {exc}"
+        code, message = sanitize_ui_error(exc)
+        return None, f"{code}: {message}"
 
 
 def create_demo() -> gr.Blocks:
@@ -66,6 +94,12 @@ def create_demo() -> gr.Blocks:
             Upload a file, choose a workspace, then anonymize or restore.
             """
         )
+        gr.Markdown(
+            """
+            **Security Warning:** This UI is for local use only.
+            Keep binding on `127.0.0.1`; do not expose this service to external networks.
+            """
+        )
 
         with gr.Tab("Shield"):
             shield_file = gr.File(label="Input File")
@@ -74,6 +108,22 @@ def create_demo() -> gr.Blocks:
                 value=default_workspace,
                 label="Workspace",
                 allow_custom_value=True,
+            )
+            allow_lossy_xlsx = gr.Checkbox(
+                label="Allow lossy XLSX processing (--allow-lossy-xlsx)",
+                value=False,
+            )
+            force_reanonymize = gr.Checkbox(
+                label="Force re-anonymize (--force-reanonymize)",
+                value=False,
+            )
+            override_reason = gr.Textbox(
+                label="Override reason (required when force re-anonymize is enabled)",
+                placeholder="Required for audited force override",
+            )
+            confirm_risky_operation = gr.Checkbox(
+                label="I confirm I want to proceed with risky overrides",
+                value=False,
             )
             with gr.Row():
                 shield_btn = gr.Button("Anonymize", variant="primary")
@@ -84,7 +134,14 @@ def create_demo() -> gr.Blocks:
 
             shield_btn.click(
                 fn=shield,
-                inputs=[shield_file, shield_workspace],
+                inputs=[
+                    shield_file,
+                    shield_workspace,
+                    allow_lossy_xlsx,
+                    force_reanonymize,
+                    override_reason,
+                    confirm_risky_operation,
+                ],
                 outputs=[shield_output_file, shield_entity_table, shield_status],
             )
             shield_refresh.click(
@@ -122,9 +179,8 @@ def create_demo() -> gr.Blocks:
 
 
 def launch() -> None:
-    create_demo().launch()
+    create_demo().launch(server_name="127.0.0.1")
 
 
 if __name__ == "__main__":
     launch()
-

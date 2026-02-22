@@ -99,7 +99,8 @@ Gradio UI:
 ```bash
 uv run cowork-shield-gradio
 ```
+Security requirement: keep Gradio on localhost (`127.0.0.1`) only. Do not bind `0.0.0.0` or expose via external reverse proxy.
 If port is in use, launch manually with a custom port:
 ```bash
-uv run python -c "from cowork_shield.ui.gradio_app import create_demo; create_demo().launch(server_port=7861)"
+uv run python -c "from cowork_shield.ui.gradio_app import create_demo; create_demo().launch(server_name='127.0.0.1', server_port=7861)"
 ```

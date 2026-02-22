@@ -6,6 +6,7 @@ from cowork_shield.pipeline.ui_api import (
     get_workspaces,
     preview_entities,
     render_entity_table,
+    sanitize_ui_error,
     restore_file,
 )
 
@@ -16,4 +17,5 @@ __all__ = [
     "preview_entities",
     "render_entity_table",
     "get_workspaces",
+    "sanitize_ui_error",
 ]

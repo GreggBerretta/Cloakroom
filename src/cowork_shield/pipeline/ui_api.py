@@ -7,7 +7,18 @@ import html
 from pathlib import Path
 
 from cowork_shield.detection.engine import DetectionEngine
-from cowork_shield.exceptions import UnsupportedFormatError
+from cowork_shield.exceptions import (
+    HallucinationDetectedError,
+    IncompleteRestorationError,
+    IntegrityError,
+    KeychainError,
+    ModelHashMismatchError,
+    ReplayMismatchError,
+    UnsupportedFormatError,
+    WorkspaceExpiredError,
+    WorkspaceNotFoundError,
+    XLSXContentLossRiskError,
+)
 from cowork_shield.pipeline.anonymize import AnonymizePipeline
 from cowork_shield.pipeline.restore import RestorePipeline
 from cowork_shield.workspace.manager import WorkspaceManager
@@ -21,6 +32,38 @@ class UIOperationResult:
     summary: str
     entity_rows: list[dict[str, str]]
     entity_table_html: str
+
+
+def sanitize_ui_error(exc: Exception) -> tuple[str, str]:
+    """Return a stable, non-sensitive UI-safe error code/message pair."""
+    code = exc.__class__.__name__
+
+    if isinstance(exc, UnsupportedFormatError):
+        return code, "Unsupported format. Use CSV, XLSX, DOCX, or TXT."
+    if isinstance(exc, WorkspaceNotFoundError):
+        return code, "Workspace not found. Select an existing workspace."
+    if isinstance(exc, WorkspaceExpiredError):
+        return code, "Workspace expired. Create a new workspace and retry."
+    if isinstance(exc, XLSXContentLossRiskError):
+        return (
+            code,
+            "XLSX includes charts/images that may be dropped. Enable lossy XLSX only with explicit confirmation.",
+        )
+    if isinstance(exc, ModelHashMismatchError):
+        return code, "Model hash mismatch. Deterministic safeguards blocked this operation."
+    if isinstance(exc, ReplayMismatchError):
+        return code, "Deterministic replay mismatch detected. Operation aborted."
+    if isinstance(exc, HallucinationDetectedError):
+        return code, "Potential AI mutation detected. Restore aborted."
+    if isinstance(exc, IntegrityError):
+        return code, "Vault integrity verification failed. Restore aborted."
+    if isinstance(exc, IncompleteRestorationError):
+        return code, "Restore incomplete. Unresolved tokens remain in output."
+    if isinstance(exc, KeychainError):
+        return code, "Keychain operation failed. Verify Keychain access and retry."
+    if isinstance(exc, OSError):
+        return code, "Filesystem operation failed. Verify path permissions and free disk space."
+    return code, "Operation failed. See logs for details."
 
 
 def get_workspaces() -> list[str]:

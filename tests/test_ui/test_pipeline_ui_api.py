@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from cowork_shield.pipeline import get_workspaces, render_entity_table
 from cowork_shield.pipeline import ui_api
+from cowork_shield.exceptions import IncompleteRestorationError
 
 
 class TestUIAPIHelpers:
@@ -37,3 +38,15 @@ class TestUIAPIHelpers:
         assert "default" in names
         assert "client-a" in names
 
+    def test_sanitize_ui_error_strips_sensitive_details(self):
+        code, message = ui_api.sanitize_ui_error(
+            IncompleteRestorationError(["[PERSON_00001]", "[EMAIL_00002]"])
+        )
+        assert code == "IncompleteRestorationError"
+        assert "PERSON_00001" not in message
+        assert "EMAIL_00002" not in message
+
+    def test_sanitize_ui_error_fallback_message_does_not_echo_input(self):
+        code, message = ui_api.sanitize_ui_error(RuntimeError("secret payload 123"))
+        assert code == "RuntimeError"
+        assert "secret payload 123" not in message
