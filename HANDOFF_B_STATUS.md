@@ -8,7 +8,7 @@
 - Source repo: [GreggBerretta/cowork-shield](https://github.com/GreggBerretta/cowork-shield)
 - Fork repo: [GreggBerretta/cowork-shield-fork](https://github.com/GreggBerretta/cowork-shield-fork)
 - Active integration branch: `codex/handoff-b-status-doc`
-- Snapshot commit: `3b7bf59` (fork + local branch head)
+- Snapshot commit: `3368ba8` (fork + local branch head)
 - Pilot kickoff issue: [#1](https://github.com/GreggBerretta/cowork-shield/issues/1)
 - Pilot milestone: `Pilot Kickoff Week (2026-02-23)`
 
@@ -38,6 +38,10 @@ This document is intended to be sufficient for another engineer to continue with
 ### Validation
 - Full test suite: **184 passed**.
 - EC-15 suite: **14 passed**.
+- Fork-only bootstrap validation (Feb 22, 2026):
+  - `en_core_web_lg` installed in local fork clone.
+  - `tests/test_detection/test_engine.py` + `tests/test_state_integrity/test_ec15_state_integrity.py`: **29 passed**.
+  - Full suite in a fresh clone still requires Hebrew model install (`he_core_news_sm` or `xx_ent_wiki_sm`).
 
 ## 3) Where Everything Sits
 ### Product/Scope Docs
@@ -179,7 +183,9 @@ This document is intended to be sufficient for another engineer to continue with
 ## 10) Go/No-Go Matrix (Current)
 | Criterion | Status | Evidence |
 | --- | --- | --- |
-| Full Test Suite | ✅ | `176 passed` |
+| Full Test Suite | ✅ | `184 passed` |
+| Fork-Only English Bootstrap | ✅ | `en_core_web_lg` installed; detection + EC-15 smoke = `29 passed` |
+| Fork-Only Full Suite Prereq | ⚠️ | Hebrew model still required for full suite (`he_core_news_sm` or fallback) |
 | EC-15 State Integrity | ✅ | `14 passed` |
 | CI Automation | ✅ | `ci.yml`, `ec15-gate.yml`, `weekly-trust-gate.yml` |
 | Install Path | ✅ | `INSTALL.md` |
