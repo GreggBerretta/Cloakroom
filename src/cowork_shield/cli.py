@@ -14,7 +14,7 @@ from cowork_shield.clipboard.operations import (
     restore_clipboard,
     shield_clipboard,
 )
-from cowork_shield.detection.engine import LANGUAGE_CHOICES
+from cowork_shield.detection.engine import HEBREW_BACKEND_CHOICES, LANGUAGE_CHOICES
 from cowork_shield.exceptions import CoWorkShieldError
 from cowork_shield.pipeline.anonymize import AnonymizePipeline
 from cowork_shield.pipeline.restore import RestorePipeline
@@ -75,6 +75,26 @@ def main():
     help="Detection language: auto, en, or he.",
 )
 @click.option(
+    "--hebrew-backend",
+    type=click.Choice(HEBREW_BACKEND_CHOICES, case_sensitive=False),
+    default="auto",
+    help="Hebrew NLP backend: auto, spacy, stanza, or transformers.",
+)
+@click.option(
+    "--hebrew-stanza-model",
+    type=str,
+    default="he",
+    show_default=True,
+    help="Stanza model id for Hebrew backend.",
+)
+@click.option(
+    "--hebrew-transformer-model",
+    type=str,
+    default="CordwainerSmith/GolemPII-v1",
+    show_default=True,
+    help="Transformers model id for Hebrew backend.",
+)
+@click.option(
     "--allow-lossy-xlsx",
     is_flag=True,
     help="Allow XLSX processing even when chart/image loss risk is detected.",
@@ -97,6 +117,9 @@ def anonymize(
     ttl,
     score_threshold,
     language,
+    hebrew_backend,
+    hebrew_stanza_model,
+    hebrew_transformer_model,
     allow_lossy_xlsx,
     force_reanonymize,
     reason,
@@ -129,6 +152,9 @@ def anonymize(
             ctx,
             score_threshold=score_threshold,
             language=language.lower(),
+            hebrew_backend=hebrew_backend.lower(),
+            hebrew_stanza_model=hebrew_stanza_model.strip(),
+            hebrew_transformer_model=hebrew_transformer_model.strip(),
             force_reanonymize=force_reanonymize,
             override_reason=reason,
             override_user=getpass.getuser(),
@@ -215,6 +241,26 @@ def restore(file, output, workspace):
     help="Detection language: auto, en, or he.",
 )
 @click.option(
+    "--hebrew-backend",
+    type=click.Choice(HEBREW_BACKEND_CHOICES, case_sensitive=False),
+    default="auto",
+    help="Hebrew NLP backend: auto, spacy, stanza, or transformers.",
+)
+@click.option(
+    "--hebrew-stanza-model",
+    type=str,
+    default="he",
+    show_default=True,
+    help="Stanza model id for Hebrew backend.",
+)
+@click.option(
+    "--hebrew-transformer-model",
+    type=str,
+    default="CordwainerSmith/GolemPII-v1",
+    show_default=True,
+    help="Transformers model id for Hebrew backend.",
+)
+@click.option(
     "--force-reanonymize",
     is_flag=True,
     help="Override deterministic/model lock checks (requires --reason).",
@@ -225,7 +271,16 @@ def restore(file, output, workspace):
     default="",
     help="Audit reason for --force-reanonymize.",
 )
-def shield_clipboard_cmd(workspace, score_threshold, language, force_reanonymize, reason):
+def shield_clipboard_cmd(
+    workspace,
+    score_threshold,
+    language,
+    hebrew_backend,
+    hebrew_stanza_model,
+    hebrew_transformer_model,
+    force_reanonymize,
+    reason,
+):
     """Anonymize current clipboard contents in place.
 
     Example:
@@ -244,6 +299,9 @@ def shield_clipboard_cmd(workspace, score_threshold, language, force_reanonymize
             ctx,
             score_threshold=score_threshold,
             language=language.lower(),
+            hebrew_backend=hebrew_backend.lower(),
+            hebrew_stanza_model=hebrew_stanza_model.strip(),
+            hebrew_transformer_model=hebrew_transformer_model.strip(),
             force_reanonymize=force_reanonymize,
             override_reason=reason,
             override_user=getpass.getuser(),

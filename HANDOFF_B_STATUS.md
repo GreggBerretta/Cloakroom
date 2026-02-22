@@ -31,9 +31,10 @@ This document is intended to be sufficient for another engineer to continue with
 - UI risky operations now require explicit confirmation gates (lossy XLSX + force re-anonymize).
 - UI error handling is sanitized to avoid echoing sensitive payloads/tokens.
 - Multi-language detection is implemented (`auto`, `en`, `he`) with Hebrew model fallback support.
+- Hebrew enhancement backends are implemented (`spacy`, `stanza`, `transformers`) with GolemPII model override support.
 
 ### Validation
-- Full test suite: **174 passed**.
+- Full test suite: **176 passed**.
 - EC-15 suite: **14 passed**.
 
 ## 3) Where Everything Sits
@@ -96,6 +97,8 @@ This document is intended to be sufficient for another engineer to continue with
 - `--force-reanonymize --reason "..."` (audited override)
 - `--allow-lossy-xlsx` (explicit XLSX lossy-content acknowledgment)
 - `--language auto|en|he` (detection language selection)
+- `--hebrew-backend auto|spacy|stanza|transformers` (Hebrew NLP backend selection)
+- `--hebrew-transformer-model MODEL_ID` (override specialized Hebrew transformers model)
 
 ## 5) Test Inventory and Execution
 ### Primary Commands
@@ -171,7 +174,7 @@ This document is intended to be sufficient for another engineer to continue with
 ## 10) Go/No-Go Matrix (Current)
 | Criterion | Status | Evidence |
 | --- | --- | --- |
-| Full Test Suite | ✅ | `174 passed` |
+| Full Test Suite | ✅ | `176 passed` |
 | EC-15 State Integrity | ✅ | `14 passed` |
 | CI Automation | ✅ | `ci.yml`, `ec15-gate.yml`, `weekly-trust-gate.yml` |
 | Install Path | ✅ | `INSTALL.md` |

@@ -25,6 +25,11 @@ dev = [
     "pytest>=8.0.0",
     "ruff>=0.4.0",
 ]
+hebrew_advanced = [
+    "stanza>=1.10.0",
+    "transformers>=4.48.0",
+    "spacy-huggingface-pipelines>=0.0.4",
+]
 
 [project.scripts]
 cowork-shield = "cowork_shield.cli:main"

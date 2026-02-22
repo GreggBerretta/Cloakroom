@@ -44,6 +44,9 @@ def shield_clipboard(
     *,
     score_threshold: float = 0.7,
     language: str = "auto",
+    hebrew_backend: str | None = None,
+    hebrew_stanza_model: str | None = None,
+    hebrew_transformer_model: str | None = None,
     force_reanonymize: bool = False,
     override_reason: str = "",
     override_user: str = "",
@@ -58,7 +61,12 @@ def shield_clipboard(
         if force_reanonymize and not override_reason.strip():
             raise CoWorkShieldError("--force-reanonymize requires --reason.")
 
-        detection = DetectionEngine(score_threshold=score_threshold)
+        detection = _create_detection_engine(
+            score_threshold=score_threshold,
+            hebrew_backend=hebrew_backend,
+            hebrew_stanza_model=hebrew_stanza_model,
+            hebrew_transformer_model=hebrew_transformer_model,
+        )
         replacer = TextReplacer()
         input_hash = _sha256_text(text)
         model_hash = detection.get_model_hash()
@@ -245,6 +253,25 @@ def _detect_in_cell(
     except TypeError:
         # Compatibility for tests using stub engines without language arg.
         return detection_engine.detect_in_cell(text, source_id)
+
+
+def _create_detection_engine(
+    *,
+    score_threshold: float,
+    hebrew_backend: str | None,
+    hebrew_stanza_model: str | None,
+    hebrew_transformer_model: str | None,
+) -> DetectionEngine:
+    try:
+        return DetectionEngine(
+            score_threshold=score_threshold,
+            hebrew_backend=hebrew_backend,
+            hebrew_stanza_model=hebrew_stanza_model,
+            hebrew_transformer_model=hebrew_transformer_model,
+        )
+    except TypeError:
+        # Compatibility for tests using stub detection engines with legacy signature.
+        return DetectionEngine(score_threshold=score_threshold)
 
 
 def _sha256_text(text: str) -> str:

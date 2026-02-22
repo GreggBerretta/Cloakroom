@@ -120,6 +120,23 @@ uv run cowork-shield anonymize <file> --language he
 uv run cowork-shield shield-clipboard --language he
 ```
 
+If you selected `--hebrew-backend stanza`:
+```bash
+uv sync --extra hebrew_advanced
+uv run python -c "import stanza; stanza.download('he')"
+```
+
+If you selected `--hebrew-backend transformers`:
+```bash
+uv sync --extra hebrew_advanced
+# or: uv pip install transformers spacy-huggingface-pipelines
+```
+
+To use the specialized Golem model explicitly:
+```bash
+uv run cowork-shield anonymize <file> --language he --hebrew-backend transformers --hebrew-transformer-model CordwainerSmith/GolemPII-v1
+```
+
 ## 8) Environment Repair
 If `spacy download` fails with `No module named pip`:
 ```bash

@@ -126,6 +126,38 @@ Current Hebrew caveats:
 Operational note:
 - Keep dependencies pinned by re-running `uv sync --extra dev` after pulling updates.
 
+### Advanced Hebrew Recognition Backends
+Default backend is `spacy` for deterministic local behavior.
+
+Optional backend flags:
+- `--hebrew-backend spacy|stanza|transformers`
+- `--hebrew-stanza-model he`
+- `--hebrew-transformer-model CordwainerSmith/GolemPII-v1`
+
+Examples:
+```bash
+uv run cowork-shield anonymize ./hebrew.txt --language he --hebrew-backend stanza
+uv run cowork-shield anonymize ./hebrew.txt --language he --hebrew-backend transformers --hebrew-transformer-model CordwainerSmith/GolemPII-v1
+```
+
+Install optional backend dependencies:
+```bash
+# Stanza backend
+uv sync --extra hebrew_advanced
+uv run python -c "import stanza; stanza.download('he')"
+```
+
+If you only want the transformers backend:
+```bash
+uv pip install transformers spacy-huggingface-pipelines
+```
+
+Environment variable equivalents:
+```bash
+export CWS_HEBREW_NLP_ENGINE=transformers
+export CWS_HEBREW_TRANSFORMER_MODEL=CordwainerSmith/GolemPII-v1
+```
+
 ## Key Recovery (Admin)
 Export encrypted recovery key:
 ```bash

@@ -3,6 +3,7 @@
 import pytest
 
 from cowork_shield import detection
+from cowork_shield.exceptions import DetectionError
 from cowork_shield.detection.engine import DetectionEngine
 from cowork_shield.models import EntityType
 
@@ -91,7 +92,18 @@ class TestDetectionEngine:
                 captured["language"] = language
                 return []
 
-        monkeypatch.setattr(detection.engine, "_get_analyzer", lambda: FakeAnalyzer())
         engine = DetectionEngine(score_threshold=0.5)
+        monkeypatch.setattr(
+            engine,
+            "_get_analyzer_for_language",
+            lambda _language: FakeAnalyzer(),
+        )
         assert engine.detect("שלום", language="he") == []
         assert captured["language"] == "he"
+
+    def test_invalid_hebrew_backend_raises(self):
+        with pytest.raises(DetectionError):
+            DetectionEngine(score_threshold=0.5, hebrew_backend="invalid")
+
+    def test_auto_hebrew_backend_defaults_to_spacy(self):
+        assert detection.engine._resolve_hebrew_backend("auto") == "spacy"

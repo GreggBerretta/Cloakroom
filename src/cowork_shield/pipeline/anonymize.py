@@ -49,6 +49,9 @@ class AnonymizePipeline:
         workspace_ctx: WorkspaceContext,
         score_threshold: float = 0.7,
         language: str = "auto",
+        hebrew_backend: str | None = None,
+        hebrew_stanza_model: str | None = None,
+        hebrew_transformer_model: str | None = None,
         *,
         clock: Clock | None = None,
         force_reanonymize: bool = False,
@@ -58,7 +61,12 @@ class AnonymizePipeline:
     ):
         self._ctx = workspace_ctx
         self._clock = clock or SystemClock()
-        self._detection = DetectionEngine(score_threshold=score_threshold)
+        self._detection = DetectionEngine(
+            score_threshold=score_threshold,
+            hebrew_backend=hebrew_backend,
+            hebrew_stanza_model=hebrew_stanza_model,
+            hebrew_transformer_model=hebrew_transformer_model,
+        )
         self._language = language
         self._force_reanonymize = force_reanonymize
         self._override_reason = override_reason.strip()
