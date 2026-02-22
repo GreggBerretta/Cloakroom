@@ -8,7 +8,7 @@
 - Source repo: [GreggBerretta/cowork-shield](https://github.com/GreggBerretta/cowork-shield)
 - Fork repo: [GreggBerretta/cowork-shield-fork](https://github.com/GreggBerretta/cowork-shield-fork)
 - Active integration branch: `codex/handoff-b-status-doc`
-- Snapshot reference: latest branch head on `codex/handoff-b-status-doc`
+- Snapshot commit: `3b7bf59` (fork + local branch head)
 - Pilot kickoff issue: [#1](https://github.com/GreggBerretta/cowork-shield/issues/1)
 - Pilot milestone: `Pilot Kickoff Week (2026-02-23)`
 
