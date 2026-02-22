@@ -14,6 +14,8 @@ dependencies = [
     "keyring>=25.0.0",
     "cryptography>=42.0.0",
     "rich>=13.0.0",
+    "textual>=0.78.0",
+    "gradio>=5.35.0",
 ]
 
 [project.optional-dependencies]
@@ -24,6 +26,8 @@ dev = [
 
 [project.scripts]
 cowork-shield = "cowork_shield.cli:main"
+cowork-shield-tui = "cowork_shield.tui.app:run"
+cowork-shield-gradio = "cowork_shield.ui.gradio_app:launch"
 
 [build-system]
 requires = ["hatchling"]

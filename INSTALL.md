@@ -55,6 +55,33 @@ uv run cowork-shield workspace list
 uv run cowork-shield workspace show client-a
 ```
 
+## Textual UI (Terminal)
+Launch the terminal UI:
+```bash
+uv run cowork-shield-tui
+```
+
+Inside the TUI:
+- Enter file path and workspace.
+- Use buttons or hotkeys:
+  - `p` preview entities
+  - `a` anonymize
+  - `r` restore
+  - `w` refresh workspace list
+  - `q` quit
+
+## Gradio UI (Web)
+Launch local web UI:
+```bash
+uv run cowork-shield-gradio
+```
+
+Default URL: `http://127.0.0.1:7860`
+
+Features:
+- Shield tab: upload file, select workspace, anonymize, download output, review entity table.
+- Restore tab: upload anonymized file, select workspace, restore, download output.
+
 Clipboard flow:
 ```bash
 uv run cowork-shield shield-clipboard -w client-a

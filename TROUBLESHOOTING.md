@@ -17,6 +17,10 @@ Common examples:
 - `RecoveryKeyError`: bad or wrong-passphrase recovery key payload
 - `WorkspaceNotFoundError`: workspace metadata/key not found
 
+UI-specific examples:
+- `UnsupportedFormatError`: file extension not currently handled by pipeline
+- `CoWorkShieldError`: generic surfaced error in TUI/Gradio operation wrapper
+
 ## 2) Safe Log Collection (No PII)
 Collect these outputs only:
 
@@ -81,3 +85,21 @@ Escalate immediately for:
 - irreversible restore inability
 - deterministic replay failures in production workflow
 
+## 6) UI Launch Troubleshooting
+Textual UI:
+```bash
+uv run cowork-shield-tui
+```
+If it fails, verify dependency install:
+```bash
+uv sync --extra dev
+```
+
+Gradio UI:
+```bash
+uv run cowork-shield-gradio
+```
+If port is in use, launch manually with a custom port:
+```bash
+uv run python -c "from cowork_shield.ui.gradio_app import create_demo; create_demo().launch(server_port=7861)"
+```

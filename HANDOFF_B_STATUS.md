@@ -8,7 +8,7 @@
 - Source repo: [GreggBerretta/cowork-shield](https://github.com/GreggBerretta/cowork-shield)
 - Fork repo: [GreggBerretta/cowork-shield-fork](https://github.com/GreggBerretta/cowork-shield-fork)
 - Active integration branch: `codex/handoff-b-status-doc`
-- Snapshot commit: `d33a8b7`
+- Snapshot reference: latest branch head on `codex/handoff-b-status-doc`
 - Pilot kickoff issue: [#1](https://github.com/GreggBerretta/cowork-shield/issues/1)
 - Pilot milestone: `Pilot Kickoff Week (2026-02-23)`
 
@@ -27,9 +27,10 @@ This document is intended to be sufficient for another engineer to continue with
 - CI workflows and weekly trust gate workflows are present.
 - Operational docs are present (`INSTALL.md`, `TROUBLESHOOTING.md`).
 - Encrypted key recovery export/import commands are implemented.
+- Textual TUI and Gradio Web UI frontends are implemented.
 
 ### Validation
-- Full test suite: **162 passed**.
+- Full test suite: **165 passed**.
 - EC-15 suite: **14 passed**.
 
 ## 3) Where Everything Sits
@@ -43,6 +44,7 @@ This document is intended to be sufficient for another engineer to continue with
 ### Operational Docs
 - `INSTALL.md` (installation + onboarding)
 - `TROUBLESHOOTING.md` (support runbook + escalation)
+- `PERFORMANCE.md` (one-time pilot baseline metrics)
 
 ### Core Engine (Source)
 - CLI commands: `src/cowork_shield/cli.py`
@@ -61,6 +63,9 @@ This document is intended to be sufficient for another engineer to continue with
 - Hallucination formatting: `src/cowork_shield/hallucination/formatter.py`
 - TXT handler: `src/cowork_shield/handlers/text_handler.py`
 - Recovery key export/import crypto: `src/cowork_shield/vault/recovery.py`
+- UI pipeline wrapper API: `src/cowork_shield/pipeline/ui_api.py`
+- Textual UI: `src/cowork_shield/tui/app.py`
+- Gradio UI: `src/cowork_shield/ui/gradio_app.py`
 
 ### CI / Automation
 - Main CI: `.github/workflows/ci.yml`
@@ -77,6 +82,8 @@ This document is intended to be sufficient for another engineer to continue with
 - `cowork-shield workspace show WORKSPACE`
 - `cowork-shield workspace delete WORKSPACE`
 - `cowork-shield workspace cleanup`
+- `cowork-shield-tui` (Textual terminal UI)
+- `cowork-shield-gradio` (Gradio web UI)
 
 ### Safety / Recovery Commands
 - `cowork-shield workspace export-key --workspace NAME --output FILE`
@@ -99,6 +106,7 @@ This document is intended to be sufficient for another engineer to continue with
 - Clipboard operations: `tests/test_clipboard/`
 - Vault/recovery crypto and persistence: `tests/test_vault/`
 - EC-15 (release-blocking state integrity): `tests/test_state_integrity/test_ec15_state_integrity.py`
+- UI API helper coverage: `tests/test_ui/`
 
 ### EC-15 Coverage (Current)
 - Crash consistency
@@ -111,6 +119,7 @@ This document is intended to be sufficient for another engineer to continue with
 ### Installation and Onboarding
 - Install flow documented in `INSTALL.md` (uv sync path).
 - Prereqs include model install: `uv run python -m spacy download en_core_web_lg`.
+- UI launch instructions documented for both `cowork-shield-tui` and `cowork-shield-gradio`.
 
 ### Support Model
 - Support/error-code handling documented in `TROUBLESHOOTING.md`.
@@ -154,13 +163,13 @@ This document is intended to be sufficient for another engineer to continue with
 ## 10) Go/No-Go Matrix (Current)
 | Criterion | Status | Evidence |
 | --- | --- | --- |
-| Full Test Suite | ✅ | `162 passed` |
+| Full Test Suite | ✅ | `165 passed` |
 | EC-15 State Integrity | ✅ | `14 passed` |
 | CI Automation | ✅ | `ci.yml`, `ec15-gate.yml`, `weekly-trust-gate.yml` |
 | Install Path | ✅ | `INSTALL.md` |
+| UI Frontends | ✅ | `cowork-shield-tui`, `cowork-shield-gradio` |
 | Support Runbook | ✅ | `TROUBLESHOOTING.md` |
 | Key Recovery Path | ✅ | `workspace export-key/import-key` |
 | Weekly Drift Sentinel | ⚠️ Partial | dependency snapshot artifact only |
 | Performance Drift Sentinel | ❌ | not yet implemented |
 | Long-run Stability Campaign | ❌ | not yet implemented |
-
