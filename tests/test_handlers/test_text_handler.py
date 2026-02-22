@@ -75,6 +75,37 @@ class TestTextHandler:
         handler.restore(anon_path, restored_path, generator.get_reverse_lookup())
         assert restored_path.read_text(encoding="utf-8") == input_path.read_text(encoding="utf-8")
 
+    def test_markdown_round_trip(self, tmp_path):
+        handler = TextHandler()
+        detection = FakeDetectionEngine()
+        generator = TokenGenerator(os.urandom(32))
+
+        input_path = tmp_path / "notes.md"
+        input_path.write_text(
+            "# Header\n\nJohn Smith can be reached at john@example.com",
+            encoding="utf-8",
+        )
+        anon_path = tmp_path / "notes.anonymized.md"
+        restored_path = tmp_path / "notes.restored.md"
+
+        records, file_record = handler.anonymize(
+            input_path,
+            anon_path,
+            detection,
+            generator,
+            source_file="notes.md",
+        )
+
+        assert anon_path.exists()
+        assert file_record.format == "md"
+        assert file_record.entities_found == 2
+        assert file_record.tokens_applied == 2
+        assert len(records) == 2
+        assert "[PERSON_00001]" in anon_path.read_text(encoding="utf-8")
+
+        handler.restore(anon_path, restored_path, generator.get_reverse_lookup())
+        assert restored_path.read_text(encoding="utf-8") == input_path.read_text(encoding="utf-8")
+
     def test_no_entities(self, tmp_path):
         handler = TextHandler()
         detection = FakeDetectionEngine()

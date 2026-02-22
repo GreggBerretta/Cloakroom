@@ -23,6 +23,7 @@ This document is intended to be sufficient for another engineer to continue with
 - Auditable safety overrides are implemented (`--force-reanonymize --reason ...`).
 - Hallucination/mutation/dropped-token checks run before restore commit (fail-closed).
 - TXT handler and clipboard shield/restore workflows are implemented.
+- Markdown (`.md`) anonymize/restore is implemented and tested end-to-end.
 - EC-15 state integrity harness is implemented.
 - CI workflows and weekly trust gate workflows are present.
 - Operational docs are present (`INSTALL.md`, `TROUBLESHOOTING.md`).
@@ -36,7 +37,7 @@ This document is intended to be sufficient for another engineer to continue with
 - Direct PDF restore is explicitly blocked with fail-closed error messaging.
 
 ### Validation
-- Full test suite: **184 passed**.
+- Full test suite: **196 passed**.
 - EC-15 suite: **14 passed**.
 - Fork-only bootstrap validation (Feb 22, 2026):
   - `en_core_web_lg` installed in local fork clone.
@@ -183,7 +184,7 @@ This document is intended to be sufficient for another engineer to continue with
 ## 10) Go/No-Go Matrix (Current)
 | Criterion | Status | Evidence |
 | --- | --- | --- |
-| Full Test Suite | ✅ | `184 passed` |
+| Full Test Suite | ✅ | `196 passed` |
 | Fork-Only English Bootstrap | ✅ | `en_core_web_lg` installed; detection + EC-15 smoke = `29 passed` |
 | Fork-Only Full Suite Prereq | ⚠️ | Hebrew model still required for full suite (`he_core_news_sm` or fallback) |
 | EC-15 State Integrity | ✅ | `14 passed` |

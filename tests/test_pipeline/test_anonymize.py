@@ -76,6 +76,20 @@ class TestAnonymizePipeline:
         assert result.output_path.exists()
         assert result.entities_found > 0
 
+    def test_anonymize_markdown(self, workspace_ctx, tmp_path):
+        pipeline = AnonymizePipeline(workspace_ctx, score_threshold=0.5)
+        input_path = tmp_path / "notes.md"
+        input_path.write_text(
+            "# Meeting Notes\n\nJohn Smith can be reached at john@example.com",
+            encoding="utf-8",
+        )
+
+        result = pipeline.run(input_path)
+
+        assert result.output_path.name == "notes.anonymized.md"
+        assert result.output_path.exists()
+        assert "[PERSON_" in result.output_path.read_text(encoding="utf-8")
+
     def test_unsupported_format(self, workspace_ctx, tmp_path):
         pipeline = AnonymizePipeline(workspace_ctx)
         dummy = tmp_path / "file.pptx"
