@@ -56,23 +56,76 @@ class IntegrityVerifier:
         """Scan a restored file for any remaining unreplaced tokens."""
         all_text = self._extract_all_text(file_path)
         known_set = set(known_tokens)
+        return self.scan_remaining_tokens_in_text(all_text, known_set)
+
+    def scan_remaining_tokens_in_text(
+        self,
+        text: str,
+        known_tokens: Iterable[str],
+    ) -> list[str]:
+        """Find unresolved token-pattern strings using one pass over text."""
+        known_set = set(known_tokens)
+        found = {match.group(0) for match in TOKEN_PATTERN.finditer(text)}
+        if not found:
+            return []
 
         remaining = []
-        for token in known_set:
-            if self._token_present(all_text, token):
-                remaining.append(token)
-
-        # Also check for any token-pattern matches not in our known set
-        for match in TOKEN_PATTERN.finditer(all_text):
-            full_match = match.group(0)
-            if full_match not in known_set and full_match not in remaining:
-                remaining.append(full_match)
-
+        for token_text in sorted(found):
+            if self._is_known_token_match(token_text, known_set):
+                remaining.append(token_text)
+                continue
+            remaining.append(token_text)
         return remaining
 
     def extract_all_text(self, file_path: Path) -> str:
         """Extract text content for external token analysis."""
         return self._extract_all_text(file_path)
+
+    @staticmethod
+    def extract_token_matches(text: str) -> set[str]:
+        """Extract all token-shaped strings from text in a single regex pass."""
+        if not text:
+            return set()
+        return {match.group(0) for match in TOKEN_PATTERN.finditer(text)}
+
+    @staticmethod
+    def resolve_known_tokens(
+        observed_tokens: Iterable[str],
+        known_tokens: Iterable[str],
+    ) -> set[str]:
+        """Map observed tokens to canonical known token keys (supports legacy/v2 mix)."""
+        known = set(known_tokens)
+        resolved: set[str] = set()
+        for token in observed_tokens:
+            if token in known:
+                resolved.add(token)
+                continue
+            if token.startswith("[") and token.endswith("]"):
+                inner = token[1:-1]
+                if inner in known:
+                    resolved.add(inner)
+            else:
+                wrapped = f"[{token}]"
+                if wrapped in known:
+                    resolved.add(wrapped)
+        return resolved
+
+    def verify_hmacs_for_token_subset(
+        self,
+        mappings: dict[str, EntityMapping],
+        token_subset: set[str],
+    ) -> list[str]:
+        """Verify HMAC integrity only for mappings required by this restore input."""
+        if not token_subset:
+            return []
+        failures = []
+        for mapping in mappings.values():
+            token_text = mapping.token.token_text
+            if token_text not in token_subset:
+                continue
+            if not self._generator.verify_token(mapping.token, mapping.original_value):
+                failures.append(token_text)
+        return failures
 
     def _extract_all_text(self, file_path: Path) -> str:
         """Extract all text content from a file for token scanning."""
@@ -137,3 +190,11 @@ class IntegrityVerifier:
             return token[1:-1] in all_text
 
         return f"[{token}]" in all_text
+
+    @staticmethod
+    def _is_known_token_match(token_text: str, known_tokens: set[str]) -> bool:
+        if token_text in known_tokens:
+            return True
+        if token_text.startswith("[") and token_text.endswith("]"):
+            return token_text[1:-1] in known_tokens
+        return f"[{token_text}]" in known_tokens

@@ -92,3 +92,22 @@ class TestScanForRemainingTokens:
         )
         assert "PERSON_00001" in remaining
         assert "ORG_00001" in remaining
+
+    def test_extract_and_resolve_known_tokens(self, verifier):
+        text = "Hello [PERSON_00001] and ORG_00002"
+        observed = verifier.extract_token_matches(text)
+        assert observed == {"[PERSON_00001]", "ORG_00002"}
+
+        known = {"[PERSON_00001]", "[ORG_00002]"}
+        resolved = verifier.resolve_known_tokens(observed, known)
+        assert resolved == {"[PERSON_00001]", "[ORG_00002]"}
+
+    def test_verify_hmacs_for_subset(self, generator, verifier):
+        t1 = generator.get_or_create_token("John Smith", EntityType.PERSON)
+        t2 = generator.get_or_create_token("Acme Corp", EntityType.ORGANIZATION)
+        mappings = generator.get_all_mappings()
+
+        failures = verifier.verify_hmacs_for_token_subset(mappings, {t1.token_text})
+        assert failures == []
+        failures_other = verifier.verify_hmacs_for_token_subset(mappings, {t2.token_text})
+        assert failures_other == []

@@ -58,16 +58,7 @@ class RestorePipeline:
             handler = handler_cls()
 
             all_mappings = self._ctx.token_generator.get_all_mappings()
-            hmac_failures = self._verifier.verify_all_hmacs(all_mappings)
-            if hmac_failures:
-                raise IntegrityError(
-                    f"HMAC verification failed for {len(hmac_failures)} mappings. "
-                    f"Vault may be corrupted. Restoration aborted.\n"
-                    f"Failed tokens: {', '.join(hmac_failures)}"
-                )
-
-            reverse_lookup = self._ctx.get_reverse_lookup()
-            if not reverse_lookup:
+            if not all_mappings:
                 raise IntegrityError("No mappings found in workspace. Nothing to restore.")
 
             if output_path is None:
@@ -78,9 +69,15 @@ class RestorePipeline:
 
             expected_tokens = self._expected_tokens_for_input(input_path)
             input_text = self._verifier.extract_all_text(input_path)
+            known_tokens = {
+                mapping.token.token_text
+                for mapping in all_mappings.values()
+            }
+
+            observed_tokens = self._verifier.extract_token_matches(input_text)
             flags = detect_token_anomalies(
                 text=input_text,
-                known_tokens=set(reverse_lookup.keys()),
+                known_tokens=known_tokens,
                 expected_tokens=expected_tokens or None,
             )
             if flags:
@@ -89,6 +86,24 @@ class RestorePipeline:
                     details=format_hallucination_flags(flags),
                 )
 
+            active_tokens = self._verifier.resolve_known_tokens(observed_tokens, known_tokens)
+            hmac_failures = self._verifier.verify_hmacs_for_token_subset(
+                all_mappings,
+                active_tokens,
+            )
+            if hmac_failures:
+                raise IntegrityError(
+                    f"HMAC verification failed for {len(hmac_failures)} mappings. "
+                    f"Vault may be corrupted. Restoration aborted.\n"
+                    f"Failed tokens: {', '.join(hmac_failures)}"
+                )
+
+            reverse_lookup = {
+                mapping.token.token_text: mapping.original_value
+                for mapping in all_mappings.values()
+                if mapping.token.token_text in active_tokens
+            }
+
             temp_path = output_path.with_suffix(output_path.suffix + ".tmp")
 
             try:
@@ -96,7 +111,7 @@ class RestorePipeline:
 
                 remaining = self._verifier.scan_for_remaining_tokens(
                     temp_path,
-                    reverse_lookup.keys(),
+                    active_tokens,
                 )
                 if remaining:
                     raise IncompleteRestorationError(remaining)
@@ -121,7 +136,7 @@ class RestorePipeline:
             return RestoreResult(
                 input_path=input_path,
                 output_path=output_path,
-                tokens_restored=len(reverse_lookup),
+                tokens_restored=len(active_tokens),
                 workspace_name=self._ctx.workspace_name,
                 verification_passed=True,
             )

@@ -17,6 +17,7 @@ from cowork_shield.handlers.column_select import (
     infer_data_type,
     resolve_column_selections,
 )
+from cowork_shield.handlers.pii_prefilter import should_detect_pii
 from cowork_shield.models import (
     DetectedEntity,
     EntityType,
@@ -129,6 +130,9 @@ class XlsxHandler:
                         continue
 
                     if not detect_pii:
+                        continue
+
+                    if not should_detect_pii(value_str):
                         continue
 
                     # Skip pure numeric cells for detection mode.

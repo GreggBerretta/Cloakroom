@@ -8,6 +8,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 from typing import Any
 
 from langdetect import LangDetectException, detect as detect_language_code
@@ -68,6 +69,13 @@ HEBREW_ENTITY_MAPPING = {
 _english_analyzer: AnalyzerEngine | None = None
 _hebrew_analyzer_cache: dict[str, AnalyzerEngine] = {}
 _hebrew_profile_cache: dict[str, dict[str, str]] = {}
+_HEBREW_SCRIPT_RE = re.compile(r"[\u0590-\u05FF]")
+
+_TARGET_PRESIDIO_ENTITIES = tuple(
+    entity_type.value
+    for entity_type in EntityType
+    if entity_type is not EntityType.COLUMN
+)
 
 
 def _safe_pkg_version(package_name: str) -> str:
@@ -122,6 +130,15 @@ def _resolve_hebrew_backend(requested_backend: str) -> str:
 def _auto_detect_language(text: str) -> str:
     if not text or not text.strip():
         return "en"
+    # Fast path: if any Hebrew script characters are present, force Hebrew.
+    # This avoids expensive per-cell language detection for large spreadsheets.
+    if _HEBREW_SCRIPT_RE.search(text):
+        return "he"
+
+    # Fast path for common spreadsheet text (ASCII): default to English.
+    if text.isascii():
+        return "en"
+
     try:
         detected = detect_language_code(text).lower()
     except LangDetectException:
@@ -381,6 +398,10 @@ class DetectionEngine:
         ).strip()
         self._model_hash: str | None = None
         self._resolved_hebrew_backend: str | None = None
+        self._supported_entities_cache: dict[str, list[str]] = {}
+        self._cell_detection_cache: dict[tuple[str, str], tuple[DetectedEntity, ...]] = {}
+        self._cell_cache_max_entries = 5000
+        self._cell_cache_max_text_len = 256
 
     @property
     def model_lock_key(self) -> str:
@@ -420,14 +441,12 @@ class DetectionEngine:
 
         resolved_language = self.resolve_language(text, language)
         analyzer = self._get_analyzer_for_language(resolved_language)
+        entities_to_analyze = self._target_entities_for_language(analyzer, resolved_language)
 
         try:
-            # Pass entities=None to detect all entity types Presidio supports,
-            # then filter to our supported types. This avoids warnings about
-            # entity types Presidio doesn't have recognizers for (e.g., ORGANIZATION).
             results = analyzer.analyze(
                 text=text,
-                entities=None,
+                entities=entities_to_analyze or None,
                 language=resolved_language,
             )
         except Exception as e:
@@ -467,7 +486,8 @@ class DetectionEngine:
         language: str | None = None,
     ) -> list[DetectedEntity]:
         """Detect PII in a single cell value, tagging with source location."""
-        entities = self.detect(value, language)
+        resolved_language = self.resolve_language(value, language)
+        entities = self._detect_in_cell_cached(value, resolved_language)
         return [
             DetectedEntity(
                 entity_type=entity.entity_type,
@@ -479,6 +499,49 @@ class DetectionEngine:
             )
             for entity in entities
         ]
+
+    def _target_entities_for_language(
+        self,
+        analyzer: AnalyzerEngine,
+        language: str,
+    ) -> list[str]:
+        cached = self._supported_entities_cache.get(language)
+        if cached is not None:
+            return cached
+
+        try:
+            supported = set(analyzer.get_supported_entities(language=language))
+        except Exception:
+            supported = set()
+
+        if not supported:
+            entities = list(_TARGET_PRESIDIO_ENTITIES)
+        else:
+            entities = [entity for entity in _TARGET_PRESIDIO_ENTITIES if entity in supported]
+            if not entities:
+                entities = list(_TARGET_PRESIDIO_ENTITIES)
+
+        self._supported_entities_cache[language] = entities
+        return entities
+
+    def _detect_in_cell_cached(
+        self,
+        value: str,
+        resolved_language: str,
+    ) -> tuple[DetectedEntity, ...]:
+        if len(value) > self._cell_cache_max_text_len:
+            return tuple(self.detect(value, resolved_language))
+
+        key = (resolved_language, value)
+        cached = self._cell_detection_cache.get(key)
+        if cached is not None:
+            return cached
+
+        entities = tuple(self.detect(value, resolved_language))
+        self._cell_detection_cache[key] = entities
+        if len(self._cell_detection_cache) > self._cell_cache_max_entries:
+            self._cell_detection_cache.pop(next(iter(self._cell_detection_cache)))
+        return entities
 
     def _get_hebrew_analyzer_and_profile(self) -> tuple[AnalyzerEngine, dict[str, str]]:
         backend = _resolve_hebrew_backend(self._hebrew_backend)
