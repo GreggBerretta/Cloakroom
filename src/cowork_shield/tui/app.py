@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import argparse
+import logging as py_logging
 from pathlib import Path
 
 from textual.app import App, ComposeResult
@@ -21,6 +23,7 @@ from textual.widgets import (
 )
 
 from cowork_shield.exceptions import CoWorkShieldError
+from cowork_shield.logging import configure_logging, log_event
 from cowork_shield.pipeline import (
     anonymize_file,
     get_file_columns,
@@ -349,8 +352,36 @@ class CoWorkShieldApp(App[None]):
         return [(name, name) for name in get_workspaces()]
 
 
-def run() -> None:
+def _build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="CoWork Shield Textual UI")
+    parser.add_argument("--verbose", action="store_true", help="Enable DEBUG logging (sanitized).")
+    parser.add_argument("--no-logging", action="store_true", help="Disable non-audit logs.")
+    parser.add_argument("--encrypt-logs", action="store_true", help="Encrypt local log files at rest.")
+    return parser
+
+
+def run(argv: list[str] | None = None) -> None:
     """Console script entrypoint."""
+    args, _ = _build_arg_parser().parse_known_args(argv)
+    configure_logging(
+        component="tui",
+        verbose=args.verbose,
+        no_logging=args.no_logging,
+        encrypt_logs=args.encrypt_logs,
+    )
+    log_event(
+        "tui",
+        py_logging.INFO,
+        "session_start",
+        "Textual UI session started",
+        metadata={
+            "verbose": args.verbose,
+            "no_logging": args.no_logging,
+            "encrypt_logs": args.encrypt_logs,
+        },
+    )
+    if args.verbose:
+        print("DEBUG logging enabled. Logs are sanitized, but review before sharing externally.")
     CoWorkShieldApp().run()
 
 

@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import argparse
+import logging as py_logging
 from pathlib import Path
 
 import gradio as gr
 
 from cowork_shield.exceptions import CoWorkShieldError
+from cowork_shield.logging import configure_logging, log_event
 from cowork_shield.pipeline import (
     anonymize_file,
     get_file_columns,
@@ -240,8 +243,44 @@ def create_demo() -> gr.Blocks:
     return demo
 
 
-def launch() -> None:
-    create_demo().launch(server_name="127.0.0.1")
+def _build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="CoWork Shield Gradio UI")
+    parser.add_argument("--server-name", default="127.0.0.1", help="Bind host (must remain 127.0.0.1).")
+    parser.add_argument("--server-port", type=int, default=7860, help="Bind port.")
+    parser.add_argument("--verbose", action="store_true", help="Enable DEBUG logging (sanitized).")
+    parser.add_argument("--no-logging", action="store_true", help="Disable non-audit logs.")
+    parser.add_argument("--encrypt-logs", action="store_true", help="Encrypt local log files at rest.")
+    return parser
+
+
+def launch(argv: list[str] | None = None) -> None:
+    args, _ = _build_arg_parser().parse_known_args(argv)
+    if args.server_name != "127.0.0.1":
+        raise ValueError("Gradio must bind to 127.0.0.1 only. External exposure is not supported.")
+
+    configure_logging(
+        component="gradio",
+        verbose=args.verbose,
+        no_logging=args.no_logging,
+        encrypt_logs=args.encrypt_logs,
+    )
+    log_event(
+        "gradio",
+        py_logging.INFO,
+        "session_start",
+        "Gradio UI session started",
+        metadata={
+            "server_name": args.server_name,
+            "server_port": args.server_port,
+            "verbose": args.verbose,
+            "no_logging": args.no_logging,
+            "encrypt_logs": args.encrypt_logs,
+        },
+    )
+    if args.verbose:
+        print("DEBUG logging enabled. Logs are sanitized, but review before sharing externally.")
+
+    create_demo().launch(server_name=args.server_name, server_port=args.server_port)
 
 
 if __name__ == "__main__":

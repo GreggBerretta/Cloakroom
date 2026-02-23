@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import logging as py_logging
 import os
 from pathlib import Path
 import socket
@@ -45,6 +46,7 @@ from cowork_shield.ipc.protocol import (
     build_hello_payload,
     build_success_response,
 )
+from cowork_shield.logging import configure_logging, log_event
 from cowork_shield.licensing import enforce_license_policy, resolve_license_context
 from cowork_shield.pipeline.anonymize import AnonymizePipeline
 from cowork_shield.pipeline.columns import inspect_columns
@@ -579,15 +581,38 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=str(Path.home() / ".cowork-shield" / "ipc" / "engine.sock"),
         help="UNIX domain socket path",
     )
+    parser.add_argument("--verbose", action="store_true", help="Enable DEBUG logging (sanitized).")
+    parser.add_argument("--no-logging", action="store_true", help="Disable non-audit logs.")
+    parser.add_argument("--encrypt-logs", action="store_true", help="Encrypt local log files at rest.")
     return parser
 
 
 def main(argv: list[str] | None = None) -> None:
     args = build_arg_parser().parse_args(argv)
+    configure_logging(
+        component="engine",
+        verbose=args.verbose,
+        no_logging=args.no_logging,
+        encrypt_logs=args.encrypt_logs,
+    )
+    log_event(
+        "engine",
+        py_logging.INFO,
+        "ipc_server_start",
+        "IPC socket server starting",
+        metadata={"socket_path": str(Path(args.socket_path).expanduser())},
+    )
     server = IPCServer(args.socket_path)
     try:
         server.serve_forever()
     finally:
+        log_event(
+            "engine",
+            py_logging.INFO,
+            "ipc_server_stop",
+            "IPC socket server stopping",
+            metadata={"socket_path": str(Path(args.socket_path).expanduser())},
+        )
         server.stop()
 
 

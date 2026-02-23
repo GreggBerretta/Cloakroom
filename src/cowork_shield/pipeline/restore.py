@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from time import perf_counter
 
 from cowork_shield.exceptions import (
     HallucinationDetectedError,
@@ -15,6 +16,7 @@ from cowork_shield.exceptions import (
 )
 from cowork_shield.hallucination.detector import detect_token_anomalies
 from cowork_shield.hallucination.formatter import format_hallucination_flags
+from cowork_shield.logging import append_audit_event, log_event
 from cowork_shield.models import now_iso
 from cowork_shield.pipeline.anonymize import HANDLER_MAP
 from cowork_shield.verification.verifier import IntegrityVerifier
@@ -47,99 +49,156 @@ class RestorePipeline:
         """Restore an anonymized file to its original form."""
         input_path = input_path.resolve()
         self._ctx.ensure_not_expired()
+        started = perf_counter()
 
-        with self._ctx.operation_lock():
-            suffix = input_path.suffix.lower()
-            if suffix == ".pdf":
-                raise PdfInputOnlyError()
-            handler_cls = HANDLER_MAP.get(suffix)
-            if handler_cls is None:
-                raise UnsupportedFormatError(suffix)
-            handler = handler_cls()
+        try:
+            with self._ctx.operation_lock():
+                suffix = input_path.suffix.lower()
+                if suffix == ".pdf":
+                    raise PdfInputOnlyError()
+                handler_cls = HANDLER_MAP.get(suffix)
+                if handler_cls is None:
+                    raise UnsupportedFormatError(suffix)
+                handler = handler_cls()
 
-            all_mappings = self._ctx.token_generator.get_all_mappings()
-            if not all_mappings:
-                raise IntegrityError("No mappings found in workspace. Nothing to restore.")
-
-            if output_path is None:
-                stem = input_path.stem
-                if stem.endswith(".anonymized"):
-                    stem = stem[: -len(".anonymized")]
-                output_path = input_path.with_stem(stem + ".restored")
-
-            expected_tokens = self._expected_tokens_for_input(input_path)
-            input_text = self._verifier.extract_all_text(input_path)
-            known_tokens = {
-                mapping.token.token_text
-                for mapping in all_mappings.values()
-            }
-
-            observed_tokens = self._verifier.extract_token_matches(input_text)
-            flags = detect_token_anomalies(
-                text=input_text,
-                known_tokens=known_tokens,
-                expected_tokens=expected_tokens or None,
-            )
-            if flags:
-                raise HallucinationDetectedError(
-                    flags,
-                    details=format_hallucination_flags(flags),
+                log_event(
+                    "engine",
+                    level=20,
+                    event="restore_start",
+                    message="Starting restore pipeline",
+                    workspace_id=self._ctx.workspace_id,
+                    metadata={"file_path": str(input_path), "file_ext": suffix},
                 )
 
-            active_tokens = self._verifier.resolve_known_tokens(observed_tokens, known_tokens)
-            hmac_failures = self._verifier.verify_hmacs_for_token_subset(
-                all_mappings,
-                active_tokens,
-            )
-            if hmac_failures:
-                raise IntegrityError(
-                    f"HMAC verification failed for {len(hmac_failures)} mappings. "
-                    f"Vault may be corrupted. Restoration aborted.\n"
-                    f"Failed tokens: {', '.join(hmac_failures)}"
+                all_mappings = self._ctx.token_generator.get_all_mappings()
+                if not all_mappings:
+                    raise IntegrityError("No mappings found in workspace. Nothing to restore.")
+
+                if output_path is None:
+                    stem = input_path.stem
+                    if stem.endswith(".anonymized"):
+                        stem = stem[: -len(".anonymized")]
+                    output_path = input_path.with_stem(stem + ".restored")
+
+                expected_tokens = self._expected_tokens_for_input(input_path)
+                input_text = self._verifier.extract_all_text(input_path)
+                known_tokens = {
+                    mapping.token.token_text
+                    for mapping in all_mappings.values()
+                }
+
+                observed_tokens = self._verifier.extract_token_matches(input_text)
+                flags = detect_token_anomalies(
+                    text=input_text,
+                    known_tokens=known_tokens,
+                    expected_tokens=expected_tokens or None,
                 )
+                if flags:
+                    raise HallucinationDetectedError(
+                        flags,
+                        details=format_hallucination_flags(flags),
+                    )
 
-            reverse_lookup = {
-                mapping.token.token_text: mapping.original_value
-                for mapping in all_mappings.values()
-                if mapping.token.token_text in active_tokens
-            }
-
-            temp_path = output_path.with_suffix(output_path.suffix + ".tmp")
-
-            try:
-                handler.restore(input_path, temp_path, reverse_lookup)
-
-                remaining = self._verifier.scan_for_remaining_tokens(
-                    temp_path,
+                active_tokens = self._verifier.resolve_known_tokens(observed_tokens, known_tokens)
+                hmac_failures = self._verifier.verify_hmacs_for_token_subset(
+                    all_mappings,
                     active_tokens,
                 )
-                if remaining:
-                    raise IncompleteRestorationError(remaining)
+                if hmac_failures:
+                    raise IntegrityError(
+                        f"HMAC verification failed for {len(hmac_failures)} mappings. "
+                        f"Vault may be corrupted. Restoration aborted.\n"
+                        f"Failed tokens: {', '.join(hmac_failures)}"
+                    )
 
-                if output_path.exists():
-                    output_path.unlink()
-                os.rename(str(temp_path), str(output_path))
-            except Exception:
-                if temp_path.exists():
-                    temp_path.unlink()
-                self._ctx.vault_data.abort_count += 1
+                reverse_lookup = {
+                    mapping.token.token_text: mapping.original_value
+                    for mapping in all_mappings.values()
+                    if mapping.token.token_text in active_tokens
+                }
+
+                temp_path = output_path.with_suffix(output_path.suffix + ".tmp")
+
                 try:
-                    self._ctx.persist()
+                    handler.restore(input_path, temp_path, reverse_lookup)
+
+                    remaining = self._verifier.scan_for_remaining_tokens(
+                        temp_path,
+                        active_tokens,
+                    )
+                    if remaining:
+                        raise IncompleteRestorationError(remaining)
+
+                    if output_path.exists():
+                        output_path.unlink()
+                    os.rename(str(temp_path), str(output_path))
                 except Exception:
-                    pass
-                raise
+                    if temp_path.exists():
+                        temp_path.unlink()
+                    self._ctx.vault_data.abort_count += 1
+                    try:
+                        self._ctx.persist()
+                    except Exception:
+                        pass
+                    raise
 
-            self._ctx.vault_data.restore_count += 1
-            self._ctx.vault_data.last_used = now_iso()
-            self._ctx.persist()
+                self._ctx.vault_data.restore_count += 1
+                self._ctx.vault_data.last_used = now_iso()
+                self._ctx.persist()
 
-            return RestoreResult(
-                input_path=input_path,
-                output_path=output_path,
-                tokens_restored=len(active_tokens),
-                workspace_name=self._ctx.workspace_name,
-                verification_passed=True,
+                duration_ms = int((perf_counter() - started) * 1000)
+                log_event(
+                    "engine",
+                    level=20,
+                    event="restore_complete",
+                    message="Restore complete",
+                    workspace_id=self._ctx.workspace_id,
+                    metadata={
+                        "file_path": str(input_path),
+                        "file_ext": suffix,
+                        "duration_ms": duration_ms,
+                        "tokens_restored": len(active_tokens),
+                        "integrity_check": True,
+                    },
+                )
+                append_audit_event(
+                    self._ctx,
+                    event="file_restored",
+                    fields={
+                        "file_path": str(input_path),
+                        "file_ext": suffix,
+                        "duration_ms": duration_ms,
+                        "integrity_check": True,
+                    },
+                )
+
+                return RestoreResult(
+                    input_path=input_path,
+                    output_path=output_path,
+                    tokens_restored=len(active_tokens),
+                    workspace_name=self._ctx.workspace_name,
+                    verification_passed=True,
+                )
+        except Exception as exc:
+            log_event(
+                "engine",
+                level=40,
+                event="restore_failed",
+                message="Restore failed",
+                workspace_id=self._ctx.workspace_id,
+                metadata={"file_path": str(input_path)},
+                exc=exc,
             )
+            if isinstance(exc, IntegrityError):
+                append_audit_event(
+                    self._ctx,
+                    event="integrity_failure",
+                    fields={
+                        "file_path": str(input_path),
+                        "failure_type": exc.__class__.__name__,
+                    },
+                )
+            raise
 
     def _expected_tokens_for_input(self, input_path: Path) -> set[str]:
         input_raw = str(input_path)

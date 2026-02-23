@@ -47,10 +47,14 @@ This document is intended to be sufficient for another engineer to continue with
 - Wrapper launcher/transport modules are implemented for mode selection and child-process UI bridge launch.
 - Engine-side wrapper license checks are implemented (`license_key` payload support + feature/limit enforcement).
 - Wrapper invariant harness (`swift run wrapper-invariant-checks`) is implemented and passing.
+- Logging/observability module is implemented (`src/cowork_shield/logging/`) with JSON logging, sanitization middleware, 0600 permissions, rotation, retention, and optional encryption.
+- Signed workspace audit trail is implemented with HMAC tamper-evidence and CLI inspection (`workspace show --audit`).
+- Log lifecycle commands are implemented (`logs export`, `logs delete`) with sanitized support bundles.
+- CLI/TUI/Gradio/IPC entrypoints now initialize component-specific logging defaults and support `--verbose`, `--no-logging`, `--encrypt-logs`.
 
 ### Validation
-- Full test suite: **259 passed**.
-- EC-15 suite: **14 passed**.
+- Full test suite: **277 passed**.
+- EC-15 suite: **18 passed**.
 - Fork-only bootstrap validation (Feb 22, 2026):
   - `en_core_web_lg` installed in local fork clone.
   - `tests/test_detection/test_engine.py` + `tests/test_state_integrity/test_ec15_state_integrity.py`: **29 passed**.
@@ -80,6 +84,7 @@ This document is intended to be sufficient for another engineer to continue with
 - Verification scanner: `src/cowork_shield/verification/verifier.py`
 - Detection engine + model hash: `src/cowork_shield/detection/engine.py`
 - PDF extractor abstraction: `src/cowork_shield/extractors/pdf_markdown.py`
+- Logging config/sanitizer/audit: `src/cowork_shield/logging/`
 
 ### New Feature Modules
 - Clipboard workflows: `src/cowork_shield/clipboard/operations.py`
@@ -109,8 +114,11 @@ This document is intended to be sufficient for another engineer to continue with
 - `cowork-shield restore-clipboard -w WORKSPACE`
 - `cowork-shield workspace list`
 - `cowork-shield workspace show WORKSPACE`
+- `cowork-shield workspace show WORKSPACE --audit`
 - `cowork-shield workspace delete WORKSPACE`
 - `cowork-shield workspace cleanup`
+- `cowork-shield logs export ...`
+- `cowork-shield logs delete ...`
 - `cowork-shield-tui` (Textual terminal UI)
 - `cowork-shield-gradio` (Gradio web UI)
 - `swift run wrapper-invariant-checks` (wrapper invariant harness)
@@ -128,6 +136,9 @@ This document is intended to be sufficient for another engineer to continue with
 - `--language auto|en|he` (detection language selection)
 - `--hebrew-backend auto|spacy|stanza|transformers` (Hebrew NLP backend selection)
 - `--hebrew-transformer-model MODEL_ID` (override specialized Hebrew transformers model)
+- `--verbose` (sanitized DEBUG logging mode)
+- `--no-logging` (disable non-audit logs)
+- `--encrypt-logs` (AES-GCM encrypted non-audit logs at rest)
 
 ## 5) Test Inventory and Execution
 ### Primary Commands
@@ -144,6 +155,7 @@ This document is intended to be sufficient for another engineer to continue with
 - EC-15 (release-blocking state integrity): `tests/test_state_integrity/test_ec15_state_integrity.py`
 - UI API helper coverage: `tests/test_ui/`
 - IPC protocol/framing/server: `tests/test_ipc/`
+- Logging/audit observability: `tests/test_logging/`
 
 ### EC-15 Coverage (Current)
 - Crash consistency
@@ -151,6 +163,7 @@ This document is intended to be sufficient for another engineer to continue with
 - Concurrency safety
 - Vault integrity failure modes
 - Environment edges (sleep/wake interruption simulation, clock skew, disk full)
+- Log integrity (sanitization, file permissions, retention, audit tamper-evidence)
 
 ## 6) Pilot Operations Status
 ### Installation and Onboarding
@@ -204,15 +217,16 @@ This document is intended to be sufficient for another engineer to continue with
 ## 10) Go/No-Go Matrix (Current)
 | Criterion | Status | Evidence |
 | --- | --- | --- |
-| Full Test Suite | ✅ | `259 passed` |
 | Fork-Only English Bootstrap | ✅ | `en_core_web_lg` installed; detection + EC-15 smoke = `29 passed` |
 | Fork-Only Full Suite Prereq | ⚠️ | Hebrew model still required for full suite (`he_core_news_sm` or fallback) |
-| EC-15 State Integrity | ✅ | `14 passed` |
+| Full Test Suite | ✅ | `277 passed` |
+| EC-15 State Integrity | ✅ | `18 passed` |
 | CI Automation | ✅ | `ci.yml`, `ec15-gate.yml`, `weekly-trust-gate.yml` |
 | Install Path | ✅ | `INSTALL.md` |
 | UI Frontends | ✅ | `cowork-shield-tui`, `cowork-shield-gradio` |
 | Support Runbook | ✅ | `TROUBLESHOOTING.md` |
 | Key Recovery Path | ✅ | `workspace export-key/import-key` |
+| Logging & Observability Addendum | ✅ | `src/cowork_shield/logging/`, `tests/test_logging/`, `logs export/delete` |
 | Weekly Drift Sentinel | ⚠️ Partial | dependency snapshot artifact only |
 | Performance Drift Sentinel | ❌ | not yet implemented |
 | Long-run Stability Campaign | ❌ | not yet implemented |

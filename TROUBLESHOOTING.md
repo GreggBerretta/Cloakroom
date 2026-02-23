@@ -37,6 +37,7 @@ uv run cowork-shield --version
 uv run python --version
 uv run cowork-shield workspace list
 uv run cowork-shield workspace show <workspace-name>
+uv run cowork-shield logs export --workspace <workspace-name> --output ./support-logs.json
 ```
 
 Also collect:
@@ -49,9 +50,20 @@ Do not share:
 - original client files with live PII
 - raw clipboard contents
 - key export passphrases
+- unsanitized manual dumps outside `logs export`
 
 If restore failure involves anonymized output (tokenized only), file sharing is generally acceptable.
 If anonymization failure involves live data, manually redact first.
+
+Logging defaults:
+- Location: `~/.cowork_shield/logs/`
+- Permissions: `0600`
+- Rotation: `10 MB x 5 files`
+- Retention: `30 days`
+
+If logs are not present:
+- Check whether command used `--no-logging`
+- Re-run with `--verbose` to increase diagnostic detail (still sanitized)
 
 ## 2b) IPC / Wrapper Hard-Fail Conditions
 If wrapper integration reports protocol hard-fail:
@@ -114,6 +126,7 @@ uv run pytest -q tests/test_state_integrity/test_ec15_state_integrity.py
    - exception code
    - reproduction steps
    - OS + Python versions
+   - sanitized support log bundle from `cowork-shield logs export`
 
 ## 5) Support Escalation
 Use internal support channel:

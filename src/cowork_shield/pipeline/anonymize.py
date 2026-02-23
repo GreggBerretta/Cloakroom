@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import shutil
 from dataclasses import dataclass
+import logging as py_logging
 from pathlib import Path
+from time import perf_counter
 
 from cowork_shield.detection.engine import DetectionEngine
 from cowork_shield.exceptions import (
@@ -19,6 +21,7 @@ from cowork_shield.handlers.docx import DocxHandler
 from cowork_shield.handlers.pdf_handler import PdfHandler
 from cowork_shield.handlers.text_handler import TextHandler
 from cowork_shield.handlers.xlsx import XlsxHandler
+from cowork_shield.logging import append_audit_event, log_event
 from cowork_shield.models import Clock, EntityMapping, FileRecord, SystemClock
 from cowork_shield.verification.verifier import compute_sha256
 from cowork_shield.workspace.manager import WorkspaceContext
@@ -99,144 +102,208 @@ class AnonymizePipeline:
         """Anonymize a single file within the workspace context."""
         input_path = input_path.resolve()
         self._ctx.ensure_not_expired()
+        started = perf_counter()
+        try:
+            with self._ctx.operation_lock():
+                suffix = input_path.suffix.lower()
+                handler_cls = HANDLER_MAP.get(suffix)
+                if handler_cls is None:
+                    raise UnsupportedFormatError(suffix)
 
-        with self._ctx.operation_lock():
-            suffix = input_path.suffix.lower()
-            handler_cls = HANDLER_MAP.get(suffix)
-            if handler_cls is None:
-                raise UnsupportedFormatError(suffix)
-
-            if self._selected_columns and suffix not in {".csv", ".xlsx"}:
-                raise ColumnSelectionError(
-                    "--columns is supported only for CSV/XLSX inputs."
+                log_event(
+                    "engine",
+                    level=py_logging.INFO,
+                    event="anonymize_start",
+                    message="Starting anonymization pipeline",
+                    workspace_id=self._ctx.workspace_id,
+                    metadata={
+                        "file_path": str(input_path),
+                        "file_ext": suffix,
+                        "detect_pii": self._detect_pii,
+                        "selected_columns_count": len(self._selected_columns),
+                        "language": self._language,
+                    },
                 )
-            if suffix in {".csv", ".xlsx"} and not self._detect_pii and not self._selected_columns:
-                raise ColumnSelectionError(
-                    "No anonymization mode selected. Provide --columns or enable --detect-pii."
-                )
 
-            if suffix == ".xlsx":
-                handler = handler_cls(allow_lossy_xlsx=self._allow_lossy_xlsx)
-            elif suffix == ".pdf":
-                handler = handler_cls(pdf_output_format=self._pdf_output_format)
-            else:
-                handler = handler_cls()
-
-            if output_path is None:
-                if suffix == ".pdf":
-                    output_ext = ".docx" if self._pdf_output_format == "docx" else ".md"
-                    output_path = input_path.with_name(f"{input_path.stem}.anonymized{output_ext}")
-                else:
-                    output_path = input_path.with_stem(input_path.stem + ".anonymized")
-
-            backup_path = None
-            if suffix == ".xlsx":
-                backup_path = input_path.with_suffix(input_path.suffix + ".backup")
-                if not backup_path.exists():
-                    shutil.copy2(input_path, backup_path)
-
-            input_hash = compute_sha256(input_path)
-            model_hash = self._detection.get_model_hash()
-            expected_output_hash = ""
-            override_events: list[str] = []
-
-            model_lock_key = self._detection.model_lock_key
-            locked_model_hash = self._resolve_locked_model_hash(model_lock_key)
-            if locked_model_hash and locked_model_hash != model_hash:
-                if not self._force_reanonymize:
-                    raise ModelHashMismatchError(expected=locked_model_hash, actual=model_hash)
-                override_events.append("model_hash_mismatch")
-
-            previous_record = self._find_previous_record(input_path, input_hash)
-            if previous_record is not None:
-                expected_output_hash = previous_record.file_hash_after
-                if previous_record.model_hash and previous_record.model_hash != model_hash:
-                    if not self._force_reanonymize:
-                        raise ModelHashMismatchError(
-                            expected=previous_record.model_hash,
-                            actual=model_hash,
-                        )
-                    override_events.append("previous_record_model_mismatch")
-
-            counters_snapshot, mappings_snapshot = self._ctx.token_generator.export_state()
-            file_records_before = list(self._ctx.vault_data.file_records)
-            model_hashes_before = dict(self._ctx.vault_data.model_hashes)
-            token_counter_before = dict(self._ctx.vault_data.token_counter)
-            mappings_before = dict(self._ctx.vault_data.mappings)
-            anonymize_count_before = self._ctx.vault_data.anonymize_count
-            last_used_before = self._ctx.vault_data.last_used
-            token_abi_before = self._ctx.vault_data.token_abi_version
-
-            try:
-                records, file_record = handler.anonymize(
-                    input_path,
-                    output_path,
-                    self._detection,
-                    self._ctx.token_generator,
-                    source_file=input_path.name,
-                    language=self._language,
-                    selected_columns=self._selected_columns,
-                    detect_pii=self._detect_pii,
-                )
-            except Exception:
-                self._ctx.token_generator.load_state(counters_snapshot, mappings_snapshot)
-                raise
-
-            file_record.model_hash = model_hash
-            file_record.applied_tokens = sorted({record.token_text for record in records})
-            file_record.previous_output_hash = expected_output_hash
-
-            if expected_output_hash and file_record.file_hash_after != expected_output_hash:
-                if not self._force_reanonymize:
-                    self._rollback_run(output_path, counters_snapshot, mappings_snapshot)
-                    raise ReplayMismatchError(
-                        expected=expected_output_hash,
-                        actual=file_record.file_hash_after,
+                if self._selected_columns and suffix not in {".csv", ".xlsx"}:
+                    raise ColumnSelectionError(
+                        "--columns is supported only for CSV/XLSX inputs."
                     )
-                override_events.append("replay_hash_mismatch")
+                if suffix in {".csv", ".xlsx"} and not self._detect_pii and not self._selected_columns:
+                    raise ColumnSelectionError(
+                        "No anonymization mode selected. Provide --columns or enable --detect-pii."
+                    )
 
-            if self._force_reanonymize:
-                override_events.append("manual_force_reanonymize")
-                file_record.reanonymize_override = True
-                file_record.override_reason = self._override_reason
-                file_record.override_user = self._override_user
-                file_record.override_timestamp = self._clock.now_iso()
+                if suffix == ".xlsx":
+                    handler = handler_cls(allow_lossy_xlsx=self._allow_lossy_xlsx)
+                elif suffix == ".pdf":
+                    handler = handler_cls(pdf_output_format=self._pdf_output_format)
+                else:
+                    handler = handler_cls()
 
-            if override_events:
-                file_record.override_events = sorted(set(override_events))
+                if output_path is None:
+                    if suffix == ".pdf":
+                        output_ext = ".docx" if self._pdf_output_format == "docx" else ".md"
+                        output_path = input_path.with_name(f"{input_path.stem}.anonymized{output_ext}")
+                    else:
+                        output_path = input_path.with_stem(input_path.stem + ".anonymized")
 
-            counters, mappings = self._ctx.token_generator.export_state()
-            self._ctx.vault_data.token_counter = counters
-            self._ctx.vault_data.mappings = mappings
-            self._ctx.vault_data.file_records.append(file_record)
-            self._ctx.vault_data.model_hashes[model_lock_key] = model_hash
-            self._ctx.vault_data.token_abi_version = "v2"
-            self._ctx.vault_data.anonymize_count += 1
-            self._ctx.vault_data.last_used = self._clock.now_iso()
+                backup_path = None
+                if suffix == ".xlsx":
+                    backup_path = input_path.with_suffix(input_path.suffix + ".backup")
+                    if not backup_path.exists():
+                        shutil.copy2(input_path, backup_path)
 
-            try:
-                self._ctx.persist()
-            except Exception:
-                self._ctx.token_generator.load_state(counters_snapshot, mappings_snapshot)
-                self._ctx.vault_data.file_records = file_records_before
-                self._ctx.vault_data.model_hashes = model_hashes_before
-                self._ctx.vault_data.token_counter = token_counter_before
-                self._ctx.vault_data.mappings = mappings_before
-                self._ctx.vault_data.anonymize_count = anonymize_count_before
-                self._ctx.vault_data.last_used = last_used_before
-                self._ctx.vault_data.token_abi_version = token_abi_before
-                if output_path.exists():
-                    output_path.unlink()
-                raise
+                input_hash = compute_sha256(input_path)
+                model_hash = self._detection.get_model_hash()
+                expected_output_hash = ""
+                override_events: list[str] = []
 
-            return AnonymizeResult(
-                input_path=input_path,
-                output_path=output_path,
-                backup_path=backup_path,
-                entities_found=file_record.entities_found,
-                tokens_applied=file_record.tokens_applied,
-                workspace_name=self._ctx.workspace_name,
+                model_lock_key = self._detection.model_lock_key
+                locked_model_hash = self._resolve_locked_model_hash(model_lock_key)
+                if locked_model_hash and locked_model_hash != model_hash:
+                    if not self._force_reanonymize:
+                        raise ModelHashMismatchError(expected=locked_model_hash, actual=model_hash)
+                    override_events.append("model_hash_mismatch")
+
+                previous_record = self._find_previous_record(input_path, input_hash)
+                if previous_record is not None:
+                    expected_output_hash = previous_record.file_hash_after
+                    if previous_record.model_hash and previous_record.model_hash != model_hash:
+                        if not self._force_reanonymize:
+                            raise ModelHashMismatchError(
+                                expected=previous_record.model_hash,
+                                actual=model_hash,
+                            )
+                        override_events.append("previous_record_model_mismatch")
+
+                counters_snapshot, mappings_snapshot = self._ctx.token_generator.export_state()
+                file_records_before = list(self._ctx.vault_data.file_records)
+                model_hashes_before = dict(self._ctx.vault_data.model_hashes)
+                token_counter_before = dict(self._ctx.vault_data.token_counter)
+                mappings_before = dict(self._ctx.vault_data.mappings)
+                anonymize_count_before = self._ctx.vault_data.anonymize_count
+                last_used_before = self._ctx.vault_data.last_used
+                token_abi_before = self._ctx.vault_data.token_abi_version
+
+                try:
+                    records, file_record = handler.anonymize(
+                        input_path,
+                        output_path,
+                        self._detection,
+                        self._ctx.token_generator,
+                        source_file=input_path.name,
+                        language=self._language,
+                        selected_columns=self._selected_columns,
+                        detect_pii=self._detect_pii,
+                    )
+                except Exception:
+                    self._ctx.token_generator.load_state(counters_snapshot, mappings_snapshot)
+                    raise
+
+                file_record.model_hash = model_hash
+                file_record.applied_tokens = sorted({record.token_text for record in records})
+                file_record.previous_output_hash = expected_output_hash
+
+                if expected_output_hash and file_record.file_hash_after != expected_output_hash:
+                    if not self._force_reanonymize:
+                        self._rollback_run(output_path, counters_snapshot, mappings_snapshot)
+                        raise ReplayMismatchError(
+                            expected=expected_output_hash,
+                            actual=file_record.file_hash_after,
+                        )
+                    override_events.append("replay_hash_mismatch")
+
+                if self._force_reanonymize:
+                    override_events.append("manual_force_reanonymize")
+                    file_record.reanonymize_override = True
+                    file_record.override_reason = self._override_reason
+                    file_record.override_user = self._override_user
+                    file_record.override_timestamp = self._clock.now_iso()
+
+                if override_events:
+                    file_record.override_events = sorted(set(override_events))
+
+                counters, mappings = self._ctx.token_generator.export_state()
+                self._ctx.vault_data.token_counter = counters
+                self._ctx.vault_data.mappings = mappings
+                self._ctx.vault_data.file_records.append(file_record)
+                self._ctx.vault_data.model_hashes[model_lock_key] = model_hash
+                self._ctx.vault_data.token_abi_version = "v2"
+                self._ctx.vault_data.anonymize_count += 1
+                self._ctx.vault_data.last_used = self._clock.now_iso()
+
+                try:
+                    self._ctx.persist()
+                except Exception:
+                    self._ctx.token_generator.load_state(counters_snapshot, mappings_snapshot)
+                    self._ctx.vault_data.file_records = file_records_before
+                    self._ctx.vault_data.model_hashes = model_hashes_before
+                    self._ctx.vault_data.token_counter = token_counter_before
+                    self._ctx.vault_data.mappings = mappings_before
+                    self._ctx.vault_data.anonymize_count = anonymize_count_before
+                    self._ctx.vault_data.last_used = last_used_before
+                    self._ctx.vault_data.token_abi_version = token_abi_before
+                    if output_path.exists():
+                        output_path.unlink()
+                    raise
+
+                duration_ms = int((perf_counter() - started) * 1000)
+                log_event(
+                    "engine",
+                    level=py_logging.INFO,
+                    event="anonymize_complete",
+                    message="Anonymization complete",
+                    workspace_id=self._ctx.workspace_id,
+                    metadata={
+                        "file_path": str(input_path),
+                        "file_ext": suffix,
+                        "duration_ms": duration_ms,
+                        "entities_found": file_record.entities_found,
+                        "tokens_applied": file_record.tokens_applied,
+                        "override_used": bool(self._force_reanonymize),
+                    },
+                )
+                append_audit_event(
+                    self._ctx,
+                    event="file_anonymized",
+                    fields={
+                        "file_path": str(input_path),
+                        "file_ext": suffix,
+                        "entity_count": file_record.entities_found,
+                        "duration_ms": duration_ms,
+                    },
+                )
+                if self._force_reanonymize:
+                    append_audit_event(
+                        self._ctx,
+                        event="override_used",
+                        fields={
+                            "override_type": "force_reanonymize",
+                            "reason": self._override_reason,
+                            "file_path": str(input_path),
+                        },
+                    )
+
+                return AnonymizeResult(
+                    input_path=input_path,
+                    output_path=output_path,
+                    backup_path=backup_path,
+                    entities_found=file_record.entities_found,
+                    tokens_applied=file_record.tokens_applied,
+                    workspace_name=self._ctx.workspace_name,
+                )
+        except Exception as exc:
+            log_event(
+                "engine",
+                level=py_logging.ERROR,
+                event="anonymize_failed",
+                message="Anonymization failed",
+                workspace_id=self._ctx.workspace_id,
+                metadata={"file_path": str(input_path)},
+                exc=exc,
             )
+            raise
 
     def _find_previous_record(self, input_path: Path, input_hash: str) -> FileRecord | None:
         wanted_path = str(input_path)

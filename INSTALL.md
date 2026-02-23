@@ -241,6 +241,51 @@ Force replace existing Keychain entry (admin only):
 uv run cowork-shield workspace import-key --workspace client-a --input ./client-a.recovery.key --force
 ```
 
+## Logging & Observability
+Default behavior:
+- Structured JSON logs: `~/.cowork_shield/logs/cowork_shield.log`
+- File mode: `0600` (owner read/write only)
+- Rotation: `10 MB` max, `5` files retained
+- Retention: `30` days
+- Audit logs: signed per workspace in each workspace directory (`audit.log.jsonl`)
+
+CLI flags:
+```bash
+uv run cowork-shield --verbose ...
+uv run cowork-shield --no-logging ...
+uv run cowork-shield --encrypt-logs ...
+```
+
+Export sanitized logs for support:
+```bash
+# App logs + all workspace audit logs
+uv run cowork-shield logs export --output ./support-logs.json
+
+# App logs only
+uv run cowork-shield logs export --no-include-audit --output ./support-app-logs.json
+
+# Single workspace audit scope
+uv run cowork-shield logs export --workspace client-a --output ./client-a-logs.json
+```
+
+Delete local logs:
+```bash
+# Delete rotating app logs only
+uv run cowork-shield logs delete --yes
+
+# Delete app logs + one workspace audit log
+uv run cowork-shield logs delete --workspace client-a --yes
+
+# Delete app logs + all workspace audit logs
+uv run cowork-shield logs delete --all-audits --yes
+```
+
+Inspect signed audit events:
+```bash
+uv run cowork-shield workspace show client-a --audit
+```
+
 ## Notes
 - Recovery key files are encrypted with your passphrase and written with `0600` permissions.
 - If Keychain entry is deleted and no recovery export exists, workspace decryption is unrecoverable by design.
+- Logs are sanitized by design: no PII values, token values, vault contents, or clipboard payloads are written.

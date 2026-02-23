@@ -4,13 +4,17 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from datetime import datetime, timezone
+import getpass
 import json
 import threading
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
+import logging as py_logging
 
 from cowork_shield.exceptions import WorkspaceExpiredError, WorkspaceNotFoundError
+from cowork_shield.logging import append_audit_event, log_event
+from cowork_shield.logging.audit import audit_log_path_for_workspace_dir
 from cowork_shield.models import VaultData, now_iso
 from cowork_shield.tokenizer.generator import TokenGenerator
 from cowork_shield.vault.crypto import derive_hmac_key, generate_master_key
@@ -117,7 +121,7 @@ class WorkspaceManager:
         hmac_key = derive_hmac_key(master_key)
         token_gen = TokenGenerator(hmac_key)
 
-        return WorkspaceContext(
+        ctx = WorkspaceContext(
             workspace_id=workspace_id,
             workspace_name=name,
             vault=vault,
@@ -125,6 +129,20 @@ class WorkspaceManager:
             token_generator=token_gen,
             master_key=master_key,
         )
+        log_event(
+            "engine",
+            py_logging.INFO,
+            "workspace_created",
+            "Workspace created",
+            workspace_id=workspace_id,
+            metadata={"workspace_name": name, "ttl_hours": ttl_hours},
+        )
+        append_audit_event(
+            ctx,
+            event="workspace_created",
+            fields={"ttl_hours": ttl_hours, "user": getpass.getuser()},
+        )
+        return ctx
 
     def get_or_create_workspace(
         self, name: str, ttl_hours: int = 168
@@ -182,6 +200,18 @@ class WorkspaceManager:
         if not meta_path.exists():
             raise WorkspaceNotFoundError(name)
         return json.loads(meta_path.read_text(encoding="utf-8"))
+
+    def get_workspace_dir(self, name: str) -> Path:
+        """Return the workspace directory path."""
+        ws_dir = self._base_dir / name
+        if not (ws_dir / "metadata.json").exists():
+            raise WorkspaceNotFoundError(name)
+        return ws_dir
+
+    def get_audit_log_path(self, name: str) -> Path:
+        """Return expected audit log path for a workspace."""
+        ws_dir = self.get_workspace_dir(name)
+        return audit_log_path_for_workspace_dir(ws_dir)
 
     def list_workspaces(self) -> list[dict]:
         """List all workspaces with metadata."""
@@ -246,6 +276,11 @@ class WorkspaceManager:
 
         # Delete metadata
         meta_path.unlink()
+
+        # Delete audit log if present
+        audit_path = audit_log_path_for_workspace_dir(ws_dir)
+        if audit_path.exists():
+            audit_path.unlink()
 
         # Remove directory if empty
         try:

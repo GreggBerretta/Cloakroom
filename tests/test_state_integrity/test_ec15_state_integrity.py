@@ -5,7 +5,11 @@ from __future__ import annotations
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
+import json
+import logging
+import os
 import threading
+import time
 
 import pytest
 
@@ -24,6 +28,10 @@ from cowork_shield.models import (
     VaultData,
     now_iso,
 )
+from cowork_shield.logging import append_audit_event
+from cowork_shield.logging import config as log_config
+from cowork_shield.logging.audit import read_audit_events
+from cowork_shield.logging.config import configure_logging, log_event
 from cowork_shield.pipeline.anonymize import AnonymizePipeline
 from cowork_shield.pipeline.restore import RestorePipeline
 from cowork_shield.tokenizer.generator import TokenGenerator
@@ -426,3 +434,63 @@ class TestEC15EnvironmentEdges:
         assert workspace_ctx.token_generator.get_all_mappings() == {}
         assert workspace_ctx.vault_data.file_records == []
 
+
+class TestEC15LogIntegrity:
+    def _isolate_logs(self, tmp_path, monkeypatch):
+        log_dir = tmp_path / "logs"
+        monkeypatch.setattr(log_config, "LOG_DIR", log_dir)
+        monkeypatch.setattr(log_config, "LOG_FILE", log_dir / "cowork_shield.log")
+        monkeypatch.setattr(log_config, "LOG_KEY_FILE", log_dir / ".logkey")
+        return log_dir
+
+    def test_t_log_001_log_permissions_0600(self, tmp_path, monkeypatch):
+        self._isolate_logs(tmp_path, monkeypatch)
+        configure_logging(component="engine", verbose=False, no_logging=False, encrypt_logs=False)
+        log_event("engine", logging.INFO, "log_permission_test", "hello")
+
+        mode = os.stat(log_config.LOG_FILE).st_mode & 0o777
+        assert mode == 0o600
+
+    def test_t_log_002_log_rotation_retention(self, tmp_path, monkeypatch):
+        log_dir = self._isolate_logs(tmp_path, monkeypatch)
+        log_dir.mkdir(parents=True, exist_ok=True)
+        stale = log_dir / "cowork_shield.log.4"
+        stale.write_text("{}", encoding="utf-8")
+        stale_time = time.time() - (31 * 24 * 3600)
+        os.utime(stale, (stale_time, stale_time))
+
+        configure_logging(component="engine", verbose=False, no_logging=False, encrypt_logs=False)
+        assert not stale.exists()
+
+    def test_t_log_003_audit_hmac_tamper_detection(self, workspace_ctx, tmp_path):
+        append_audit_event(
+            workspace_ctx,
+            event="integrity_failure",
+            fields={"file_path": str(tmp_path / "sample.txt"), "failure_type": "IntegrityError"},
+        )
+        rows = read_audit_events(workspace_ctx)
+        assert rows and rows[0].verified is True
+
+        audit_path = workspace_ctx.vault.path.parent / "audit.log.jsonl"
+        payload = audit_path.read_text(encoding="utf-8")
+        audit_path.write_text(payload.replace("IntegrityError", "TamperedError"), encoding="utf-8")
+
+        tampered_rows = read_audit_events(workspace_ctx)
+        assert tampered_rows and tampered_rows[0].verified is False
+
+    def test_t_log_004_sanitization_redacts_pii(self, tmp_path, monkeypatch):
+        self._isolate_logs(tmp_path, monkeypatch)
+        configure_logging(component="engine", verbose=False, no_logging=False, encrypt_logs=False)
+        log_event(
+            "engine",
+            logging.INFO,
+            "sanitize_test",
+            "Contact John Smith at john.smith@acme.com token [PERSON_00001]",
+        )
+
+        content = log_config.LOG_FILE.read_text(encoding="utf-8")
+        assert "John Smith" not in content
+        assert "john.smith@acme.com" not in content
+        assert "[PERSON_00001]" not in content
+        entries = [json.loads(line) for line in content.splitlines() if line.strip()]
+        assert any(entry.get("event") == "log_sanitization_triggered" for entry in entries)
