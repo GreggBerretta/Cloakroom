@@ -13,6 +13,7 @@ from typing import Any
 from cowork_shield import __version__ as ENGINE_VERSION
 from cowork_shield.clipboard.operations import restore_clipboard, shield_clipboard
 from cowork_shield.detection.engine import DetectionEngine
+from cowork_shield.detection.engine import HEBREW_BACKEND_CHOICES
 from cowork_shield.exceptions import (
     CoWorkShieldError,
     ColumnSelectionError,
@@ -26,6 +27,9 @@ from cowork_shield.exceptions import (
     PdfInputOnlyError,
     ReplayMismatchError,
     RecoveryKeyError,
+    LicenseFeatureError,
+    LicenseKeyInvalidError,
+    LicenseLimitExceededError,
     UnsupportedFormatError,
     VaultCorruptedError,
     WorkspaceExpiredError,
@@ -41,6 +45,7 @@ from cowork_shield.ipc.protocol import (
     build_hello_payload,
     build_success_response,
 )
+from cowork_shield.licensing import enforce_license_policy, resolve_license_context
 from cowork_shield.pipeline.anonymize import AnonymizePipeline
 from cowork_shield.pipeline.columns import inspect_columns
 from cowork_shield.pipeline.restore import RestorePipeline
@@ -78,6 +83,9 @@ class IPCServer:
         IncompleteRestorationError,
         XLSXContentLossRiskError,
         WorkspaceSyncError,
+        LicenseFeatureError,
+        LicenseKeyInvalidError,
+        LicenseLimitExceededError,
     )
 
     HARD_FAIL_ERRORS = (
@@ -199,34 +207,60 @@ class IPCServer:
         request_type = request.type
         if request_type == "HELLO":
             return self._dispatch_hello(request)
-        if request_type == "HEARTBEAT":
-            return self._dispatch_heartbeat(request)
-        if request_type == "WORKSPACE_SWITCH":
-            return self._dispatch_workspace_switch(request)
-        if request_type == "ANONYMIZE_FILE":
-            return self._dispatch_anonymize_file(request)
-        if request_type == "RESTORE_FILE":
-            return self._dispatch_restore_file(request)
-        if request_type == "CLIPBOARD_ANONYMIZE":
-            return self._dispatch_clipboard_anonymize(request)
-        if request_type == "CLIPBOARD_RESTORE":
-            return self._dispatch_clipboard_restore(request)
-        if request_type == "VAULT_EXPORT_KEY":
-            return self._dispatch_vault_export_key(request)
-        if request_type == "VAULT_IMPORT_KEY":
-            return self._dispatch_vault_import_key(request)
-        if request_type == "STATS_QUERY":
-            return self._dispatch_stats_query(request)
-        if request_type == "INSPECT_COLUMNS":
-            return self._dispatch_inspect_columns(request)
         if request_type == "SHUTDOWN":
             return DispatchResult(payload={"accepted": True}, workspace_version=request.workspace_version)
 
-        raise IPCError(f"Unsupported IPC request type: {request.type}")
+        license_context = resolve_license_context(request.payload)
+        license_usage = enforce_license_policy(
+            request_type=request_type,
+            payload=request.payload,
+            license_context=license_context,
+        )
+
+        dispatch_result: DispatchResult
+        if request_type == "HEARTBEAT":
+            dispatch_result = self._dispatch_heartbeat(request)
+        elif request_type == "WORKSPACE_SWITCH":
+            dispatch_result = self._dispatch_workspace_switch(request)
+        elif request_type == "ANONYMIZE_FILE":
+            dispatch_result = self._dispatch_anonymize_file(request)
+        elif request_type == "RESTORE_FILE":
+            dispatch_result = self._dispatch_restore_file(request)
+        elif request_type == "CLIPBOARD_ANONYMIZE":
+            dispatch_result = self._dispatch_clipboard_anonymize(request)
+        elif request_type == "CLIPBOARD_RESTORE":
+            dispatch_result = self._dispatch_clipboard_restore(request)
+        elif request_type == "VAULT_EXPORT_KEY":
+            dispatch_result = self._dispatch_vault_export_key(request)
+        elif request_type == "VAULT_IMPORT_KEY":
+            dispatch_result = self._dispatch_vault_import_key(request)
+        elif request_type == "STATS_QUERY":
+            dispatch_result = self._dispatch_stats_query(request)
+        elif request_type == "INSPECT_COLUMNS":
+            dispatch_result = self._dispatch_inspect_columns(request)
+        else:
+            raise IPCError(f"Unsupported IPC request type: {request.type}")
+
+        payload = dict(dispatch_result.payload)
+        payload["license"] = {
+            "tier": license_context.tier,
+            "key_present": license_context.key_present,
+            "key_fingerprint": license_context.key_fingerprint,
+            **license_usage,
+        }
+        return DispatchResult(
+            payload=payload,
+            workspace_version=dispatch_result.workspace_version,
+        )
 
     def _dispatch_hello(self, request: IPCRequest) -> DispatchResult:
         detection = DetectionEngine(score_threshold=0.7)
-        payload = build_hello_payload(model_hash=detection.get_model_hash())
+        payload = build_hello_payload(
+            model_hash=detection.get_model_hash(),
+            supported_hebrew_backends=HEBREW_BACKEND_CHOICES,
+            supported_pdf_output_formats=("md", "docx"),
+            supported_ipc_modes=("stdio", "unix_socket"),
+        )
         return DispatchResult(payload=payload, workspace_version=request.workspace_version)
 
     def _dispatch_heartbeat(self, request: IPCRequest) -> DispatchResult:

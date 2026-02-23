@@ -27,6 +27,7 @@ class TestCli:
         assert "anonymize" in result.output
         assert "inspect-columns" in result.output
         assert "ipc-server" in result.output
+        assert "ipc-stdio" in result.output
         assert "restore" in result.output
         assert "shield-clipboard" in result.output
         assert "restore-clipboard" in result.output
@@ -76,6 +77,10 @@ class TestCli:
         result = runner.invoke(main, ["ipc-server", "--help"])
         assert result.exit_code == 0
         assert "--socket-path" in result.output
+
+    def test_ipc_stdio_help(self, runner):
+        result = runner.invoke(main, ["ipc-stdio", "--help"])
+        assert result.exit_code == 0
 
     def test_inspect_columns(self, runner):
         result = runner.invoke(main, ["inspect-columns", str(FIXTURES_DIR / "sample_data.csv")])

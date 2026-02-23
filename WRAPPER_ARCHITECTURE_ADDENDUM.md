@@ -1,63 +1,52 @@
-# Wrapper Architecture Addendum (Implemented)
+# CoWork Shield Wrapper Architecture (Hybrid IPC, Implemented)
 
-Version: 1.1  
-Status: Normative (implemented in this repo as protocol + wrapper core)  
-Applies To: Phase 2+ macOS Swift Wrapper
+Version: 1.0  
+Date: February 2026  
+Status: Release-blocking wrapper core implementation landed in this repo  
+Applies To: Phase 2.5+ macOS Swift wrapper + current TUI/Gradio compatibility path
 
-## Scope of This Implementation
-This repository now includes:
-- A strict Python IPC daemon over AF_UNIX with length-prefixed framing.
-- A Swift wrapper core package with finite-state-machine controls and anti-false-success gating.
-- A runnable Swift invariant harness (`wrapper-invariant-checks`) for release checks.
+## Implemented Against This PRD
+This repository now implements a hybrid wrapper protocol surface:
 
-The full macOS app shell (menu bar UX, hotkeys, full AppKit/SwiftUI orchestration) is still separate from this core.
+- **Mode A (default):** subprocess + stdin/stdout framed IPC
+- **Mode B:** AF_UNIX socket daemon IPC with `600` socket permissions
 
-## Implemented Security/Trust Invariants
+Core trust invariants remain fail-closed with explicit FSM + anti-false-success gating.
 
-### 1) Wrapper-as-Boundary Doctrine
-Implemented in wrapper core under:
+## 1) Hybrid IPC Modes
+
+### Mode A (subprocess stdio)
+Implemented in engine:
+- `src/cowork_shield/ipc/stdio_server.py`
+- CLI command: `cowork-shield ipc-stdio`
+- Script entrypoint: `cowork-shield-ipc-stdio`
+
+Implemented in Swift:
+- `wrapper/CoWorkShieldWrapper/Sources/CoWorkShieldWrapper/SubprocessStdioTransport.swift`
+- `wrapper/CoWorkShieldWrapper/Sources/CoWorkShieldWrapper/HybridIPCClient.swift`
+- `IPCMode.default == .subprocessStdio`
+
+### Mode B (AF_UNIX socket)
+Implemented in engine:
+- `src/cowork_shield/ipc/server.py`
+- `src/cowork_shield/ipc/framing.py`
+- CLI command: `cowork-shield ipc-server --socket-path ...`
+
+Implemented in Swift:
+- `wrapper/CoWorkShieldWrapper/Sources/CoWorkShieldWrapper/UnixDomainSocketTransport.swift`
+
+### Engine launcher mode selection
+Implemented in Swift:
+- `wrapper/CoWorkShieldWrapper/Sources/CoWorkShieldWrapper/EngineLauncher.swift`
+
+Default launcher command arguments target Mode A (`ipc-stdio`), with Mode B support via `ipc-server`.
+
+## 2) State Machine + Hard-Fail Doctrine
+Implemented in:
 - `wrapper/CoWorkShieldWrapper/Sources/CoWorkShieldWrapper/WrapperStateMachine.swift`
 - `wrapper/CoWorkShieldWrapper/Sources/CoWorkShieldWrapper/WrapperController.swift`
 
-The wrapper state machine is explicit and disallows undefined transitions.
-
-### 2) Recoverability / Atomicity / Integrity
-IPC protocol + daemon enforce:
-- strict envelope validation
-- strict protocol version match
-- length-prefixed framing with partial-frame rejection
-- status classification (`SUCCESS`, `VALIDATION_ERROR`, `ERROR`, `HARD_FAIL`)
-
-Implemented in:
-- `src/cowork_shield/ipc/protocol.py`
-- `src/cowork_shield/ipc/framing.py`
-- `src/cowork_shield/ipc/server.py`
-
-### 3) Security Invariant
-Clipboard guardrails are implemented in Swift wrapper core:
-- clear-before-write placeholder strategy
-- changeCount verification
-- no automatic plaintext rewrite on failed flow
-- launch scrub hook for previous-session signature
-
-Implemented in:
-- `wrapper/CoWorkShieldWrapper/Sources/CoWorkShieldWrapper/ClipboardGuard.swift`
-
-### 4) Behavioral Truth / Anti-False-Success
-Wrapper success is gated by:
-- `status == SUCCESS`
-- request ID match
-- validated JSON envelope
-- workspace identity unchanged
-- heartbeat active
-- clipboard verification (if applicable)
-
-Implemented in:
-- `wrapper/CoWorkShieldWrapper/Sources/CoWorkShieldWrapper/OperationResultGate.swift`
-- `wrapper/CoWorkShieldWrapper/Sources/CoWorkShieldWrapper/WrapperController.swift`
-
-## State Machine Doctrine (Implemented)
-State enum and transitions implemented:
+States:
 - `UNINITIALIZED`
 - `ENGINE_HANDSHAKE`
 - `READY`
@@ -65,95 +54,97 @@ State enum and transitions implemented:
 - `HARD_FAIL`
 - `SHUTDOWN`
 
-Validation errors transition `BUSY -> READY`; protocol violations and crash-style errors transition to `HARD_FAIL`.
+Validation/business boundary errors return `BUSY -> READY`.  
+Protocol/integrity ambiguity transitions to `HARD_FAIL`.
 
-## IPC Architecture (Implemented)
-Transport:
-- UNIX domain socket (`AF_UNIX`)
-- mode `600` on socket path
-- framing: `[8-byte big-endian length][JSON payload]`
+## 3) Payload Parity (Fork Feature Surface)
+Protocol/common payload support now validates and accepts:
+- `columns`
+- `detect_pii`
+- `hebrew_backend`
+- `pdf_output_format`
+- `force_reanonymize`
+- `reason`
+- `license_key`
 
-Envelope requirements enforced:
-- `protocol_version`
-- `engine_version`
-- `request_id`
-- `type`
-- `workspace_id`
-- `workspace_version`
-- `payload`
+Engine protocol schema:
+- `src/cowork_shield/ipc/protocol.py`
 
-Operations implemented in daemon:
-- `HELLO`
-- `HEARTBEAT`
-- `WORKSPACE_SWITCH`
-- `ANONYMIZE_FILE`
-- `RESTORE_FILE`
-- `CLIPBOARD_ANONYMIZE`
-- `CLIPBOARD_RESTORE`
-- `VAULT_EXPORT_KEY`
-- `VAULT_IMPORT_KEY`
-- `STATS_QUERY`
-- `INSPECT_COLUMNS`
-- `SHUTDOWN`
+Swift payload builder:
+- `wrapper/CoWorkShieldWrapper/Sources/CoWorkShieldWrapper/OperationPayload.swift`
 
-## Version Negotiation (Implemented)
-`HELLO` response includes:
+## 4) License Enforcement Path (Engine-owned)
+License is validated by engine on wrapper operations:
+- `src/cowork_shield/licensing.py`
+- integrated in `src/cowork_shield/ipc/server.py`
+
+Implemented controls:
+- free tier restore quota (`5/day`)
+- pro-gated features:
+  - column-selective anonymization
+  - long TTL workspace creation/switch
+  - advanced Hebrew backends (`stanza`, `transformers`)
+  - audit export operation types
+
+Wrapper receives license metadata in IPC response payload under `payload.license`.
+
+## 5) Handshake Negotiation
+`HELLO` payload now returns:
 - `protocol_version`
 - `engine_version`
 - `schema_hash`
 - `model_hash`
+- `supported_hebrew_backends`
+- `supported_pdf_output_formats`
+- `supported_ipc_modes`
 
-Schema hash is deterministic and computed from required envelope contract.
+Engine:
+- `src/cowork_shield/ipc/server.py`
+- `src/cowork_shield/ipc/protocol.py`
 
-## Workspace/Vault Synchronization (Implemented)
-Requests require `workspace_id` + `workspace_version`.
-- Version mismatch triggers `VALIDATION_ERROR` (`WorkspaceSyncError`).
-- Wrapper can treat this as local-state invalidation + re-sync.
+Swift envelope validation checks handshake metadata fields:
+- `wrapper/CoWorkShieldWrapper/Sources/CoWorkShieldWrapper/IPCEnvelope.swift`
 
-Current engine `workspace_version` source: `vault_data.updated_at`.
+## 6) Clipboard Security + Anti-False-Success
+Implemented in:
+- `wrapper/CoWorkShieldWrapper/Sources/CoWorkShieldWrapper/ClipboardGuard.swift`
+- `wrapper/CoWorkShieldWrapper/Sources/CoWorkShieldWrapper/OperationResultGate.swift`
 
-## Key Management Transport Rule (Implemented)
-Wrapper-facing IPC routes exist for:
-- `VAULT_EXPORT_KEY`
-- `VAULT_IMPORT_KEY`
+Success display remains blocked unless all success predicates are satisfied.
 
-The wrapper acts as transport only; crypto remains in engine.
+## 7) Sleep/Wake Handling Hook
+Wrapper controller now exposes wake-time recovery checks:
+- `handleSystemWake(healthCheckPassed:vaultIntegrityPassed:)`
+- `wrapper/CoWorkShieldWrapper/Sources/CoWorkShieldWrapper/WrapperController.swift`
 
-## Swift Wrapper Core Package
-Path:
-- `wrapper/CoWorkShieldWrapper`
+Wake interruption while `BUSY` forces hard-fail to prevent ambiguous completion.
 
-Key files:
-- `WrapperStateMachine.swift`
-- `WrapperController.swift`
-- `IPCEnvelope.swift`
-- `LengthPrefixedCodec.swift`
-- `UnixDomainSocketTransport.swift`
-- `ClipboardGuard.swift`
+## 8) TUI/Gradio Bridge Launcher
+Wrapper-side child-process launcher implemented:
+- `wrapper/CoWorkShieldWrapper/Sources/CoWorkShieldWrapper/UIBridgeLauncher.swift`
 
-## Testability / Enforcement
-Python tests:
+This provides wrapper-owned process launching for existing Python UIs while preserving engine business-logic ownership.
+
+## 9) Tests and Enforcement
+Python:
 - `tests/test_ipc/test_protocol.py`
 - `tests/test_ipc/test_framing.py`
 - `tests/test_ipc/test_server.py`
+- `tests/test_ipc/test_stdio_server.py`
+- `tests/test_licensing.py`
 
-Swift invariant harness (toolchain-agnostic, no XCTest dependency):
+Swift invariant harness:
 ```bash
 cd wrapper/CoWorkShieldWrapper
 swift run wrapper-invariant-checks
 ```
 
-The harness validates:
-- state transitions
-- framing behavior
+Harness now validates:
+- FSM transitions
+- framing integrity
 - anti-false-success gate
-- validation-error return-to-ready path
-- clipboard changeCount guard behavior
+- Mode A default selection
+- payload parity fields
+- sleep/wake hard-fail behavior
+- launcher mode argument selection
 
-## Operational Notes
-Start IPC daemon from engine:
-```bash
-uv run cowork-shield ipc-server --socket-path ~/.cowork-shield/ipc/engine.sock
-```
-
-The daemon is process-owned by wrapper architecture and intended for wrapper-supervised lifecycle in production.

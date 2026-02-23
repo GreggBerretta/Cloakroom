@@ -1,13 +1,13 @@
 # CoWork Shield — HANDOFF B Status (Engineer Transfer)
 
-**Status Date:** February 22, 2026  
+**Status Date:** February 23, 2026  
 **Status Basis:** `HANDOFF_B.md` + `PRD_HANDOFF_B.md`  
 **Scope:** Internal validation track + Phase 2+ wrapper core/protocol implementation
 
 ## 1) Snapshot Context
 - Source repo: [GreggBerretta/cowork-shield](https://github.com/GreggBerretta/cowork-shield)
 - Fork repo: [GreggBerretta/cowork-shield-fork](https://github.com/GreggBerretta/cowork-shield-fork)
-- Active integration branch: `codex/handoff-b-status-doc`
+- Active integration branch: `codex/handoff-b-status-doc-clean`
 - Snapshot commit: `3368ba8` (fork + local branch head)
 - Pilot kickoff issue: [#1](https://github.com/GreggBerretta/cowork-shield/issues/1)
 - Pilot milestone: `Pilot Kickoff Week (2026-02-23)`
@@ -41,13 +41,15 @@ This document is intended to be sufficient for another engineer to continue with
 - Column-only mode and combined mode (`--detect-pii`) are both supported.
 - TUI and Gradio now expose spreadsheet column selection workflows.
 - Column inspection now surfaces lightweight type hints and sample values for safer selection.
-- AF_UNIX IPC daemon with strict envelope/framing validation is implemented.
+- Hybrid IPC is implemented (Mode A stdio default + Mode B AF_UNIX).
 - Wrapper-oriented IPC operations (HELLO/HEARTBEAT/file/clipboard/workspace/key/stats/inspect) are implemented.
 - Swift wrapper core package is implemented (`wrapper/CoWorkShieldWrapper`) with FSM, protocol validation, framing, clipboard guard, and anti-false-success gate.
+- Wrapper launcher/transport modules are implemented for mode selection and child-process UI bridge launch.
+- Engine-side wrapper license checks are implemented (`license_key` payload support + feature/limit enforcement).
 - Wrapper invariant harness (`swift run wrapper-invariant-checks`) is implemented and passing.
 
 ### Validation
-- Full test suite: **242 passed**.
+- Full test suite: **259 passed**.
 - EC-15 suite: **14 passed**.
 - Fork-only bootstrap validation (Feb 22, 2026):
   - `en_core_web_lg` installed in local fork clone.
@@ -100,6 +102,7 @@ This document is intended to be sufficient for another engineer to continue with
 - `cowork-shield anonymize FILE -w WORKSPACE`
 - `cowork-shield anonymize FILE -w WORKSPACE --columns ...`
 - `cowork-shield inspect-columns FILE`
+- `cowork-shield ipc-stdio`
 - `cowork-shield ipc-server --socket-path ...`
 - `cowork-shield restore FILE -w WORKSPACE`
 - `cowork-shield shield-clipboard -w WORKSPACE`
@@ -188,7 +191,7 @@ This document is intended to be sufficient for another engineer to continue with
 5. Long-run stability campaigns (hundreds of repeated cycles).
 
 ## 9) Handoff Checklist for Incoming Engineer
-1. Check out `codex/handoff-b-status-doc`.
+1. Check out `codex/handoff-b-status-doc-clean`.
 2. Run `uv sync --extra dev`.
 3. Run `uv run python -m ensurepip`.
 4. Run `uv run python -m spacy download en_core_web_lg`.
@@ -201,7 +204,7 @@ This document is intended to be sufficient for another engineer to continue with
 ## 10) Go/No-Go Matrix (Current)
 | Criterion | Status | Evidence |
 | --- | --- | --- |
-| Full Test Suite | ✅ | `242 passed` |
+| Full Test Suite | ✅ | `259 passed` |
 | Fork-Only English Bootstrap | ✅ | `en_core_web_lg` installed; detection + EC-15 smoke = `29 passed` |
 | Fork-Only Full Suite Prereq | ⚠️ | Hebrew model still required for full suite (`he_core_news_sm` or fallback) |
 | EC-15 State Integrity | ✅ | `14 passed` |

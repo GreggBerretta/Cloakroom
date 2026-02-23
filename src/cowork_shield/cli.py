@@ -17,6 +17,7 @@ from cowork_shield.clipboard.operations import (
 from cowork_shield.detection.engine import HEBREW_BACKEND_CHOICES, LANGUAGE_CHOICES
 from cowork_shield.handlers.column_select import parse_columns_option
 from cowork_shield.ipc.server import IPCServer
+from cowork_shield.ipc.stdio_server import main as stdio_server_main
 from cowork_shield.exceptions import CoWorkShieldError
 from cowork_shield.pipeline.anonymize import AnonymizePipeline
 from cowork_shield.pipeline.columns import inspect_columns
@@ -462,6 +463,18 @@ def ipc_server_cmd(socket_path):
         raise SystemExit(1)
     finally:
         server.stop()
+
+
+@main.command("ipc-stdio")
+def ipc_stdio_cmd():
+    """Run the subprocess stdin/stdout IPC bridge (hybrid Mode A)."""
+    try:
+        stdio_server_main([])
+    except KeyboardInterrupt:
+        console.print("\n[yellow]IPC stdio bridge interrupted.[/]")
+    except CoWorkShieldError as e:
+        _show_error(e)
+        raise SystemExit(1)
 
 
 @main.group("workspace")

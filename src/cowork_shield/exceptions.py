@@ -127,3 +127,15 @@ class PdfInputOnlyError(CoWorkShieldError):
 
 class ColumnSelectionError(CoWorkShieldError):
     """Column selection is invalid for the current file."""
+
+
+class LicenseKeyInvalidError(CoWorkShieldError):
+    """Provided license key is syntactically invalid or unauthorized."""
+
+
+class LicenseFeatureError(CoWorkShieldError):
+    """Requested feature is not available for the active license tier."""
+
+
+class LicenseLimitExceededError(CoWorkShieldError):
+    """Free-tier operation quota exceeded."""

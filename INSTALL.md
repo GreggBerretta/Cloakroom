@@ -139,16 +139,27 @@ uv run cowork-shield restore-clipboard -w client-a
 uv run cowork-shield shield-clipboard -w client-a --language he
 ```
 
-## IPC Daemon (Swift Wrapper Bridge)
-Start the AF_UNIX IPC server:
+## IPC Bridge (Swift Wrapper Hybrid Modes)
+Mode A (default wrapper mode): subprocess stdio bridge
+```bash
+uv run cowork-shield ipc-stdio
+```
+
+Mode B: AF_UNIX socket daemon
 ```bash
 uv run cowork-shield ipc-server --socket-path ~/.cowork-shield/ipc/engine.sock
 ```
 
 Notes:
-- Socket file permissions are set to `600`.
-- Messages use `[8-byte big-endian length][JSON payload]` framing.
-- Intended for wrapper-managed lifecycle (no silent restarts).
+- Both modes use `[8-byte big-endian length][JSON payload]` framing.
+- Mode B socket file permissions are set to `600`.
+- Wrapper launcher defaults to Mode A and supports Mode B.
+- No silent engine restarts by design.
+
+License enforcement (wrapper IPC path):
+- Wrapper payloads support `license_key`.
+- Engine enforces free-tier restore quota and Pro feature gates.
+- Invalid or insufficient keys return explicit validation errors.
 
 ## Language Support
 - Supported detection languages: `auto`, `en`, `he`

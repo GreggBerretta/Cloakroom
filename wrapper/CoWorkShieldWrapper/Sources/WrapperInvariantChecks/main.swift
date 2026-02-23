@@ -141,6 +141,111 @@ private func checkClipboardGuard() throws {
     try expect(restored == "John Smith", "Clipboard restore output mismatch")
 }
 
+private struct FakeTransport: IPCTransport {
+    let envelope: IPCEnvelope
+
+    func roundTrip(request: IPCEnvelope, timeoutSeconds: Int) throws -> IPCEnvelope {
+        _ = request
+        _ = timeoutSeconds
+        return envelope
+    }
+}
+
+private func checkHybridModeDefaults() throws {
+    try expect(IPCMode.default == .subprocessStdio, "Hybrid IPC default mode must be Mode A (stdio)")
+
+    let req = IPCEnvelope(
+        protocolVersion: "2.0",
+        engineVersion: "0.2.0",
+        requestID: "req-1",
+        type: "HEARTBEAT",
+        workspaceID: "default",
+        workspaceVersion: "v1",
+        payload: [:]
+    )
+    let resp = IPCEnvelope(
+        protocolVersion: "2.0",
+        engineVersion: "0.2.0",
+        requestID: "req-1",
+        type: "HEARTBEAT",
+        workspaceID: "default",
+        workspaceVersion: "v1",
+        status: "SUCCESS",
+        payload: ["alive": .bool(true)]
+    )
+
+    let client = HybridIPCClient(
+        mode: .subprocessStdio,
+        stdioTransport: FakeTransport(envelope: resp),
+        socketTransport: FakeTransport(envelope: req)
+    )
+    let got = try client.roundTrip(request: req)
+    try expect(got.status == "SUCCESS", "Hybrid client failed to use stdio transport in Mode A")
+}
+
+private func checkPayloadParityFields() throws {
+    let payload = OperationPayload(
+        columns: ["A", "Client Name"],
+        detectPII: true,
+        hebrewBackend: "stanza",
+        pdfOutputFormat: "docx",
+        forceReanonymize: true,
+        reason: "approved override",
+        licenseKey: "pro_1234567890ABCDEF"
+    ).toJSONPayload()
+
+    try expect(payload["columns"] != nil, "Payload missing columns")
+    try expect(payload["detect_pii"] != nil, "Payload missing detect_pii")
+    try expect(payload["hebrew_backend"] != nil, "Payload missing hebrew_backend")
+    try expect(payload["pdf_output_format"] != nil, "Payload missing pdf_output_format")
+    try expect(payload["force_reanonymize"] != nil, "Payload missing force_reanonymize")
+    try expect(payload["reason"] != nil, "Payload missing reason")
+    try expect(payload["license_key"] != nil, "Payload missing license_key")
+}
+
+private func checkSleepWakePath() throws {
+    let stateMachine = WrapperStateMachine()
+    _ = try stateMachine.transition(.appLaunch)
+    _ = try stateMachine.transition(.handshakeSucceeded)
+
+    let controller = WrapperController(
+        stateMachine: stateMachine,
+        workspaceID: "default",
+        workspaceVersion: "v1"
+    )
+    try controller.handleSystemWake(healthCheckPassed: true, vaultIntegrityPassed: true)
+    try expect(controller.state == .ready, "Wake path failed to preserve READY state")
+
+    let interruptedState = WrapperStateMachine()
+    _ = try interruptedState.transition(.appLaunch)
+    _ = try interruptedState.transition(.handshakeSucceeded)
+    _ = try interruptedState.transition(.beginOperation(name: "restore"))
+    let interruptedController = WrapperController(
+        stateMachine: interruptedState,
+        workspaceID: "default",
+        workspaceVersion: "v1"
+    )
+    do {
+        try interruptedController.handleSystemWake(healthCheckPassed: true, vaultIntegrityPassed: true)
+        throw CheckFailure(description: "Wake should hard-fail BUSY state")
+    } catch WrapperControllerError.hardFail {
+        try expect(interruptedController.state == .hardFail, "Wake interrupt did not force HARD_FAIL")
+    }
+}
+
+private func checkEngineLauncherModeSelection() throws {
+    let launcher = EngineLauncher()
+    let modeAArgs = launcher.commandArguments(mode: .default)
+    try expect(modeAArgs.suffix(1).first == "ipc-stdio", "Engine launcher must default to Mode A")
+
+    let modeBArgs = launcher.commandArguments(
+        mode: .unixDomainSocket,
+        socketPath: "/tmp/cws.sock"
+    )
+    try expect(modeBArgs.contains("ipc-server"), "Engine launcher missing ipc-server in Mode B")
+    try expect(modeBArgs.contains("/tmp/cws.sock"), "Engine launcher missing socket path in Mode B")
+}
+
 @main
 struct WrapperInvariantChecks {
     static func main() {
@@ -150,6 +255,10 @@ struct WrapperInvariantChecks {
             try checkAntiFalseSuccess()
             try checkControllerValidationPath()
             try checkClipboardGuard()
+            try checkHybridModeDefaults()
+            try checkPayloadParityFields()
+            try checkSleepWakePath()
+            try checkEngineLauncherModeSelection()
             print("wrapper-invariant-checks: PASS")
         } catch {
             fputs("wrapper-invariant-checks: FAIL - \(error)\n", stderr)

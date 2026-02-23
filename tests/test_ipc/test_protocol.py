@@ -49,6 +49,18 @@ class TestIPCRequestValidation:
         with pytest.raises(IPCError):
             IPCRequest.from_dict(payload)
 
+    def test_common_payload_field_validation(self):
+        payload = _base_request()
+        payload["payload"] = {"detect_pii": "true"}
+        with pytest.raises(IPCError):
+            IPCRequest.from_dict(payload)
+
+    def test_license_key_must_be_string(self):
+        payload = _base_request()
+        payload["payload"] = {"license_key": 123}
+        with pytest.raises(IPCError):
+            IPCRequest.from_dict(payload)
+
 
 class TestIPCResponseValidation:
     def test_valid_response(self):

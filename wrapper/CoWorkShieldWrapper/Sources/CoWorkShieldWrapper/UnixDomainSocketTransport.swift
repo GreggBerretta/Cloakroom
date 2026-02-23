@@ -11,7 +11,7 @@ public enum UnixDomainSocketTransportError: Error {
     case invalidEnvelope
 }
 
-public final class UnixDomainSocketTransport {
+public final class UnixDomainSocketTransport: IPCTransport {
     private let socketPath: String
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()

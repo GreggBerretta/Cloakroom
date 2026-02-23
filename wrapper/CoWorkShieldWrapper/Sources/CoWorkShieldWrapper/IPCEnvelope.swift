@@ -61,6 +61,13 @@ public enum JSONValue: Codable, Equatable, Sendable {
         }
         return nil
     }
+
+    public var arrayValue: [JSONValue]? {
+        if case let .array(value) = self {
+            return value
+        }
+        return nil
+    }
 }
 
 public struct IPCEnvelope: Codable, Equatable, Sendable {
@@ -145,6 +152,14 @@ public struct IPCEnvelope: Codable, Equatable, Sendable {
                     expected: expectedSchemaHash,
                     actual: schemaHash
                 )
+            }
+            guard let hebrewBackends = payload["supported_hebrew_backends"]?.arrayValue,
+                !hebrewBackends.isEmpty
+            else {
+                throw IPCEnvelopeValidationError.missingField("payload.supported_hebrew_backends")
+            }
+            guard let ipcModes = payload["supported_ipc_modes"]?.arrayValue, !ipcModes.isEmpty else {
+                throw IPCEnvelopeValidationError.missingField("payload.supported_ipc_modes")
             }
         }
     }

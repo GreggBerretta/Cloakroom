@@ -1,18 +1,18 @@
 # CoWork Shield Fork Status Report
 
 ## Snapshot
-- Date: 2026-02-22 23:47:00 UTC
+- Date: 2026-02-23 02:20:00 UTC
 - Repository: `GreggBerretta/cowork-shield-fork`
-- Branch: `codex/handoff-b-status-doc`
+- Branch: `codex/handoff-b-status-doc-clean`
 - Scope baseline: `HANDOFF_B.md` and `PRD_HANDOFF_B.md`
 - Product mode: Internal validation engine + Phase 2+ wrapper core/protocol implementation
 
 ## Executive Summary
-The fork currently has a hardened local anonymize/restore engine with fail-closed recovery behavior, deterministic replay controls, model hash locking, auditable overrides, Hebrew support, PDF input-only conversion support, spreadsheet column-selective anonymization, clipboard workflows, and two frontends (Textual TUI and Gradio web UI). It now also includes a strict AF_UNIX IPC daemon and a Swift wrapper core package implementing state-machine, framing, protocol-validation, clipboard-guard, and anti-false-success invariants.
+The fork currently has a hardened local anonymize/restore engine with fail-closed recovery behavior, deterministic replay controls, model hash locking, auditable overrides, Hebrew support, PDF input-only conversion support, spreadsheet column-selective anonymization, clipboard workflows, and two frontends (Textual TUI and Gradio web UI). It now includes a hybrid IPC wrapper core: Mode A subprocess stdio (default) and Mode B AF_UNIX socket, with state-machine, framing, protocol-validation, clipboard-guard, anti-false-success gating, and engine-side license policy checks.
 
 Current validation status is green:
 - `uv run ruff check src tests` passes.
-- `uv run pytest -q` passes with **242 passed**.
+- `uv run pytest -q` passes with **259 passed**.
 - `uv run pytest -q tests/test_state_integrity/test_ec15_state_integrity.py` passes with **14 passed**.
 - `swift run wrapper-invariant-checks` passes in `wrapper/CoWorkShieldWrapper`.
 
@@ -151,22 +151,30 @@ Implemented in `src/cowork_shield/ui/gradio_app.py`:
 - Risk confirmations and sanitized error messaging
 - Bound to localhost in launcher (`127.0.0.1`)
 
-## Wrapper / IPC Status (Phase 2+)
+## Wrapper / IPC Status (Phase 2.5+ Hybrid)
 Implemented components:
-- AF_UNIX socket daemon with 8-byte length-prefixed JSON framing:
+- Hybrid IPC transports:
+  - Mode A (default): subprocess stdio bridge (`cowork-shield ipc-stdio`)
+  - Mode B: AF_UNIX daemon (`cowork-shield ipc-server --socket-path ...`)
+- Shared 8-byte length-prefixed JSON framing:
   - `src/cowork_shield/ipc/framing.py`
   - `src/cowork_shield/ipc/server.py`
+  - `src/cowork_shield/ipc/stdio_server.py`
 - Envelope/schema/version contract:
   - `src/cowork_shield/ipc/protocol.py`
-- IPC CLI daemon entrypoint:
-  - `uv run cowork-shield ipc-server --socket-path ~/.cowork-shield/ipc/engine.sock`
+- Engine-side license policy checks:
+  - `src/cowork_shield/licensing.py`
 - Swift wrapper core package:
   - `wrapper/CoWorkShieldWrapper/Sources/CoWorkShieldWrapper/WrapperStateMachine.swift`
   - `wrapper/CoWorkShieldWrapper/Sources/CoWorkShieldWrapper/WrapperController.swift`
   - `wrapper/CoWorkShieldWrapper/Sources/CoWorkShieldWrapper/IPCEnvelope.swift`
   - `wrapper/CoWorkShieldWrapper/Sources/CoWorkShieldWrapper/LengthPrefixedCodec.swift`
+  - `wrapper/CoWorkShieldWrapper/Sources/CoWorkShieldWrapper/SubprocessStdioTransport.swift`
   - `wrapper/CoWorkShieldWrapper/Sources/CoWorkShieldWrapper/ClipboardGuard.swift`
   - `wrapper/CoWorkShieldWrapper/Sources/CoWorkShieldWrapper/UnixDomainSocketTransport.swift`
+  - `wrapper/CoWorkShieldWrapper/Sources/CoWorkShieldWrapper/HybridIPCClient.swift`
+  - `wrapper/CoWorkShieldWrapper/Sources/CoWorkShieldWrapper/EngineLauncher.swift`
+  - `wrapper/CoWorkShieldWrapper/Sources/CoWorkShieldWrapper/UIBridgeLauncher.swift`
 - Swift invariant harness:
   - `wrapper/CoWorkShieldWrapper/Sources/WrapperInvariantChecks/main.swift`
   - Run with: `swift run wrapper-invariant-checks`
@@ -179,6 +187,11 @@ Implemented wrapper-facing operations in daemon:
 - `STATS_QUERY`, `INSPECT_COLUMNS`
 - `SHUTDOWN`
 
+Handshake now negotiates:
+- supported Hebrew backends
+- supported PDF output formats
+- supported IPC modes
+
 ## Testing and Validation Results
 
 ### Latest Local Validation
@@ -189,7 +202,7 @@ uv run ruff check src tests
 # All checks passed
 
 uv run pytest -q
-# 242 passed, 1 warning
+# 259 passed, 1 warning
 
 uv run pytest -q tests/test_state_integrity/test_ec15_state_integrity.py
 # 14 passed, 1 warning
@@ -221,6 +234,8 @@ New tests include:
 - `tests/test_ipc/test_protocol.py`
 - `tests/test_ipc/test_framing.py`
 - `tests/test_ipc/test_server.py`
+- `tests/test_ipc/test_stdio_server.py`
+- `tests/test_licensing.py`
 - CLI coverage for IPC daemon command in `tests/test_cli.py`
 
 ## Performance Baseline (Current Reference)

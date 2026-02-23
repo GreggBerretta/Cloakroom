@@ -18,6 +18,9 @@ Common examples:
 - `WorkspaceExpiredError`: workspace TTL elapsed
 - `RecoveryKeyError`: bad or wrong-passphrase recovery key payload
 - `WorkspaceNotFoundError`: workspace metadata/key not found
+- `LicenseKeyInvalidError`: supplied wrapper license key invalid
+- `LicenseFeatureError`: attempted Pro-gated operation on Free tier
+- `LicenseLimitExceededError`: free restore quota exceeded (daily)
 
 UI-specific examples:
 - `UnsupportedFormatError`: file extension not currently handled by pipeline
@@ -52,13 +55,18 @@ If anonymization failure involves live data, manually redact first.
 
 ## 2b) IPC / Wrapper Hard-Fail Conditions
 If wrapper integration reports protocol hard-fail:
-- Verify daemon is running:
+- Verify Mode A or Mode B process is running:
 ```bash
+# Mode A (default): subprocess stdio bridge
+uv run cowork-shield ipc-stdio
+
+# Mode B: AF_UNIX socket daemon
 uv run cowork-shield ipc-server --socket-path ~/.cowork-shield/ipc/engine.sock
 ```
 - Confirm wrapper and engine agree on protocol/schema hash via `HELLO`.
-- Confirm socket permissions remain `600`.
+- For Mode B, confirm socket permissions remain `600`.
 - Any partial/malformed frame is a hard-fail by design; restart wrapper and daemon after correction.
+- If license metadata is missing from payload responses, treat as protocol drift and hard-fail.
 
 ## 2a) Column Selection Errors (CSV/XLSX)
 Typical causes:
@@ -139,6 +147,10 @@ uv run python -c "from cowork_shield.ui.gradio_app import create_demo; create_de
 If spreadsheet columns do not appear:
 - Re-upload the file to trigger column refresh.
 - Confirm file extension is `.csv` or `.xlsx`.
+
+Wrapper bridge note:
+- When launched from Swift wrapper bridge, UI child processes inherit `CWS_WRAPPER_IPC_MODE`.
+- `mode_a_stdio` is default; `mode_b_unix_socket` requires running `ipc-server` and valid socket path.
 
 ## 7) PDF Extraction Issues
 PDF behavior:

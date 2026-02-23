@@ -6,6 +6,9 @@ public enum WrapperControllerError: Error, Equatable {
 }
 
 public final class WrapperController {
+    public static let heartbeatIntervalSeconds = 5
+    public static let maxHeartbeatMisses = 2
+
     public static let expectedValidationErrors: Set<String> = [
         "ColumnSelectionError",
         "PdfInputOnlyError",
@@ -13,6 +16,9 @@ public final class WrapperController {
         "WorkspaceSyncError",
         "WorkspaceExpiredError",
         "WorkspaceNotFoundError",
+        "LicenseFeatureError",
+        "LicenseKeyInvalidError",
+        "LicenseLimitExceededError",
     ]
 
     private let stateMachine: WrapperStateMachine
@@ -64,7 +70,7 @@ public final class WrapperController {
                 requestIDMatches: envelope.requestID == expectedRequestID,
                 jsonValidated: true,
                 workspaceUnchanged: envelope.workspaceID == workspaceID,
-                heartbeatActive: heartbeatMisses < 2,
+                heartbeatActive: heartbeatMisses < Self.maxHeartbeatMisses,
                 clipboardVerified: clipboardVerified
             )
 
@@ -104,10 +110,33 @@ public final class WrapperController {
         }
 
         heartbeatMisses += 1
-        if heartbeatMisses >= 2 {
+        if heartbeatMisses >= Self.maxHeartbeatMisses {
             _ = try? stateMachine.transition(
                 .operationFailed(reason: "Engine heartbeat lost")
             )
+        }
+    }
+
+    public func handleSystemWake(
+        healthCheckPassed: Bool,
+        vaultIntegrityPassed: Bool
+    ) throws {
+        if stateMachine.state == .busy {
+            _ = try? stateMachine.transition(
+                .operationFailed(reason: "Sleep/wake interrupted an active operation")
+            )
+            throw WrapperControllerError.hardFail("Sleep/wake interrupted an active operation")
+        }
+
+        if !healthCheckPassed || !vaultIntegrityPassed {
+            _ = try? stateMachine.transition(.protocolViolation(reason: "wake health check failed"))
+            throw WrapperControllerError.hardFail("Wake health check failed")
+        }
+
+        heartbeatMisses = 0
+
+        if stateMachine.state == .engineHandshake {
+            _ = try? stateMachine.transition(.handshakeSucceeded)
         }
     }
 

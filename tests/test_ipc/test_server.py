@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
+from cowork_shield import licensing
 from cowork_shield.ipc.protocol import PROTOCOL_VERSION
 from cowork_shield.ipc.server import IPCServer
 from cowork_shield.models import VaultData, now_iso
@@ -53,6 +56,8 @@ class TestIPCServer:
         assert response["status"] == "SUCCESS"
         assert response["payload"]["protocol_version"] == PROTOCOL_VERSION
         assert "schema_hash" in response["payload"]
+        assert "supported_hebrew_backends" in response["payload"]
+        assert response["payload"]["supported_ipc_modes"] == ["stdio", "unix_socket"]
 
     def test_unknown_type_is_hard_fail(self, tmp_path):
         server = IPCServer(tmp_path / "engine.sock", manager=_fake_manager(tmp_path))
@@ -85,6 +90,7 @@ class TestIPCServer:
         assert response["status"] == "SUCCESS"
         assert response["payload"]["workspace_name"] == ctx.workspace_name
         assert "anonymize_count" in response["payload"]
+        assert response["payload"]["license"]["tier"] == "FREE"
 
     def test_workspace_version_mismatch_is_validation_error(self, tmp_path):
         server = IPCServer(tmp_path / "engine.sock", manager=_fake_manager(tmp_path))
@@ -112,6 +118,72 @@ class TestIPCServer:
         columns = response["payload"]["columns"]
         assert columns
         assert columns[0]["letter"] == "A"
+
+    def test_invalid_license_key_returns_validation_error(self, tmp_path):
+        manager = _fake_manager(tmp_path)
+        ctx = manager.get_active_workspace("default")
+        server = IPCServer(tmp_path / "engine.sock", manager=manager)
+        response = server.handle_request_dict(
+            _request(
+                "STATS_QUERY",
+                workspace_version=ctx.vault_data.updated_at,
+                payload={"license_key": "bad-key"},
+            )
+        )
+
+        assert response["status"] == "VALIDATION_ERROR"
+        assert response["error_code"] == "LicenseKeyInvalidError"
+
+    def test_column_selective_requires_pro_license(self, tmp_path):
+        manager = _fake_manager(tmp_path)
+        ctx = manager.get_active_workspace("default")
+        server = IPCServer(tmp_path / "engine.sock", manager=manager)
+        response = server.handle_request_dict(
+            _request(
+                "ANONYMIZE_FILE",
+                workspace_version=ctx.vault_data.updated_at,
+                payload={
+                    "file_path": str(FIXTURES_DIR / "sample_data.csv"),
+                    "columns": ["A"],
+                    "license_key": "",
+                },
+            )
+        )
+
+        assert response["status"] == "VALIDATION_ERROR"
+        assert response["error_code"] == "LicenseFeatureError"
+
+    def test_free_restore_limit_enforced(self, tmp_path, monkeypatch: pytest.MonkeyPatch):
+        usage_path = tmp_path / "license_usage.json"
+        monkeypatch.setattr(licensing, "LICENSE_USAGE_PATH", usage_path)
+
+        manager = _fake_manager(tmp_path)
+        ctx = manager.get_active_workspace("default")
+        server = IPCServer(tmp_path / "engine.sock", manager=manager)
+        for idx in range(licensing.FREE_RESTORE_DAILY_LIMIT):
+            response = server.handle_request_dict(
+                _request(
+                    "CLIPBOARD_RESTORE",
+                    workspace_version=ctx.vault_data.updated_at,
+                    payload={"license_key": ""},
+                    request_id=f"req-{idx}",
+                )
+            )
+            # Will fail business restore due to missing tokens, but license check passes first.
+            assert response["status"] in {"VALIDATION_ERROR", "ERROR", "HARD_FAIL"}
+            if response["error_code"] == "LicenseLimitExceededError":
+                pytest.fail("limit should not be exceeded before quota is consumed")
+
+        limited = server.handle_request_dict(
+            _request(
+                "CLIPBOARD_RESTORE",
+                workspace_version=ctx.vault_data.updated_at,
+                payload={"license_key": ""},
+                request_id="req-over",
+            )
+        )
+        assert limited["status"] == "VALIDATION_ERROR"
+        assert limited["error_code"] == "LicenseLimitExceededError"
 
 
 def _workspace_context(tmp_path: Path) -> WorkspaceContext:
@@ -145,11 +217,12 @@ def _request(
     *,
     workspace_version: str = "",
     payload: dict | None = None,
+    request_id: str = "req-1",
 ) -> dict:
     return {
         "protocol_version": PROTOCOL_VERSION,
         "engine_version": "0.2.0",
-        "request_id": "req-1",
+        "request_id": request_id,
         "type": request_type,
         "workspace_id": "default",
         "workspace_version": workspace_version,

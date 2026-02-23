@@ -34,10 +34,21 @@ RESPONSE_REQUIRED_FIELDS = (
     "payload",
 )
 
+COMMON_PAYLOAD_OPTIONAL_FIELDS = (
+    "columns",
+    "detect_pii",
+    "hebrew_backend",
+    "pdf_output_format",
+    "force_reanonymize",
+    "reason",
+    "license_key",
+)
+
 _SCHEMA_DESCRIPTOR = {
     "protocol_version": PROTOCOL_VERSION,
     "request_fields": list(REQUEST_REQUIRED_FIELDS),
     "response_fields": list(RESPONSE_REQUIRED_FIELDS),
+    "common_payload_optional_fields": list(COMMON_PAYLOAD_OPTIONAL_FIELDS),
     "statuses": ["SUCCESS", "VALIDATION_ERROR", "ERROR", "HARD_FAIL"],
 }
 
@@ -81,6 +92,7 @@ class IPCRequest:
         payload = data["payload"]
         if not isinstance(payload, dict):
             raise IPCError("Invalid request envelope: payload must be a JSON object")
+        _validate_common_payload_fields(payload)
 
         return cls(
             protocol_version=protocol_version,
@@ -198,13 +210,22 @@ def build_error_response(
     )
 
 
-def build_hello_payload(*, model_hash: str) -> dict[str, Any]:
+def build_hello_payload(
+    *,
+    model_hash: str,
+    supported_hebrew_backends: tuple[str, ...],
+    supported_pdf_output_formats: tuple[str, ...],
+    supported_ipc_modes: tuple[str, ...],
+) -> dict[str, Any]:
     """Payload returned for HELLO handshake."""
     return {
         "protocol_version": PROTOCOL_VERSION,
         "engine_version": ENGINE_VERSION,
         "schema_hash": SCHEMA_HASH,
         "model_hash": model_hash,
+        "supported_hebrew_backends": list(supported_hebrew_backends),
+        "supported_pdf_output_formats": list(supported_pdf_output_formats),
+        "supported_ipc_modes": list(supported_ipc_modes),
     }
 
 
@@ -232,3 +253,22 @@ def _expect_str(value: Any, *, field: str) -> str:
     if not isinstance(value, str):
         raise IPCError(f"Invalid envelope: '{field}' must be a string")
     return value
+
+
+def _validate_common_payload_fields(payload: dict[str, Any]) -> None:
+    columns = payload.get("columns")
+    if columns is not None and not isinstance(columns, (list, str)):
+        raise IPCError("Invalid payload: 'columns' must be an array or comma-separated string")
+
+    detect_pii = payload.get("detect_pii")
+    if detect_pii is not None and not isinstance(detect_pii, bool):
+        raise IPCError("Invalid payload: 'detect_pii' must be a boolean")
+
+    force_reanonymize = payload.get("force_reanonymize")
+    if force_reanonymize is not None and not isinstance(force_reanonymize, bool):
+        raise IPCError("Invalid payload: 'force_reanonymize' must be a boolean")
+
+    for key in ("hebrew_backend", "pdf_output_format", "reason", "license_key"):
+        value = payload.get(key)
+        if value is not None and not isinstance(value, str):
+            raise IPCError(f"Invalid payload: '{key}' must be a string")

@@ -14,6 +14,9 @@ from cowork_shield.exceptions import (
     IncompleteRestorationError,
     IntegrityError,
     KeychainError,
+    LicenseFeatureError,
+    LicenseKeyInvalidError,
+    LicenseLimitExceededError,
     ModelHashMismatchError,
     PdfExtractionError,
     PdfInputOnlyError,
@@ -77,6 +80,12 @@ def sanitize_ui_error(exc: Exception) -> tuple[str, str]:
         return code, "Restore incomplete. Unresolved tokens remain in output."
     if isinstance(exc, KeychainError):
         return code, "Keychain operation failed. Verify Keychain access and retry."
+    if isinstance(exc, LicenseKeyInvalidError):
+        return code, "Invalid license key. Verify the key and retry."
+    if isinstance(exc, LicenseFeatureError):
+        return code, "This operation requires a Pro license tier."
+    if isinstance(exc, LicenseLimitExceededError):
+        return code, "Free-tier restore limit reached for today."
     if isinstance(exc, OSError):
         return code, "Filesystem operation failed. Verify path permissions and free disk space."
     return code, "Operation failed. See logs for details."
