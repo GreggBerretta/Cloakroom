@@ -1,12 +1,15 @@
 """Tests for the CLI interface."""
 
 import json
+import os
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from click.testing import CliRunner
 
 from cowork_shield.cli import main
+from cowork_shield import cli as cli_module
 from cowork_shield.logging import config as log_config
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -53,6 +56,15 @@ class TestCli:
     def test_workspace_list_help(self, runner):
         result = runner.invoke(main, ["workspace", "list", "--help"])
         assert result.exit_code == 0
+
+    def test_workspace_verify_security_help(self, runner):
+        result = runner.invoke(main, ["workspace", "verify-security", "--help"])
+        assert result.exit_code == 0
+
+    def test_onboarding_help(self, runner):
+        result = runner.invoke(main, ["onboarding", "--help"])
+        assert result.exit_code == 0
+        assert "--export-key" in result.output
 
     def test_logs_help(self, runner):
         result = runner.invoke(main, ["logs", "--help"])
@@ -129,3 +141,67 @@ class TestCli:
         delete_result = runner.invoke(main, ["logs", "delete", "--yes"])
         assert delete_result.exit_code == 0
         assert "Log cleanup complete" in delete_result.output
+
+    def test_workspace_verify_security_pass(self, runner, tmp_path, monkeypatch):
+        vault = tmp_path / "vault.enc"
+        vault.write_bytes(b"x")
+        os.chmod(vault, 0o600)
+
+        class FakeWorkspaceManager:
+            def list_workspaces(self):
+                return [{"name": "default"}]
+
+            def get_workspace_metadata(self, name):
+                assert name == "default"
+                return {"vault_path": str(vault)}
+
+        monkeypatch.setattr(cli_module, "WorkspaceManager", FakeWorkspaceManager)
+        monkeypatch.setattr(cli_module, "verify_keychain_permissions", lambda: (True, "ok"))
+
+        result = runner.invoke(main, ["workspace", "verify-security"])
+        assert result.exit_code == 0
+        assert "PASS" in result.output
+
+    def test_onboarding_reminder_prints_when_incomplete(self, runner, tmp_path, monkeypatch):
+        marker = tmp_path / ".onboarding_complete"
+        monkeypatch.setattr(cli_module, "ONBOARDING_MARKER", marker)
+        result = runner.invoke(main, ["logs", "--help"])
+        assert result.exit_code == 0
+        assert "First-run onboarding is not complete" in result.output
+
+    def test_pdf_runtime_warning_before_processing(self, runner, tmp_path, monkeypatch):
+        pdf_path = tmp_path / "sample.pdf"
+        pdf_path.write_bytes(b"%PDF-1.4\n%test\n")
+        marker = tmp_path / ".onboarding_complete"
+        marker.write_text("ok", encoding="utf-8")
+        monkeypatch.setattr(cli_module, "ONBOARDING_MARKER", marker)
+
+        class FakeWorkspaceManager:
+            def get_workspace_metadata(self, _name):
+                return {"workspace_id": "ws-1"}
+
+            def get_or_create_workspace(self, _name, ttl_hours=168):
+                return SimpleNamespace(workspace_id="ws-1", workspace_name="default")
+
+        class FakePipeline:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def run(self, input_path, output_path):
+                out = output_path or input_path.with_suffix(".anonymized.md")
+                out.write_text("tokenized", encoding="utf-8")
+                return SimpleNamespace(
+                    input_path=input_path,
+                    output_path=out,
+                    workspace_name="default",
+                    entities_found=0,
+                    tokens_applied=0,
+                    backup_path=None,
+                )
+
+        monkeypatch.setattr(cli_module, "WorkspaceManager", FakeWorkspaceManager)
+        monkeypatch.setattr(cli_module, "AnonymizePipeline", FakePipeline)
+
+        result = runner.invoke(main, ["anonymize", str(pdf_path), "-w", "default"])
+        assert result.exit_code == 0
+        assert "PDF input warning" in result.output

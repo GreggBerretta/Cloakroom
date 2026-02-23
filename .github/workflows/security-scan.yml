@@ -1,0 +1,32 @@
+name: Security Scan
+
+on:
+  push:
+    branches:
+      - main
+      - "codex/**"
+  pull_request:
+
+jobs:
+  dependency-audit:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Sync runtime dependencies
+        run: uv sync
+
+      - name: Export runtime requirements
+        run: uv export --format requirements-txt --output-file requirements-runtime.txt
+
+      - name: Run dependency vulnerability scan (pip-audit)
+        run: uvx --with pip-audit pip-audit -r requirements-runtime.txt

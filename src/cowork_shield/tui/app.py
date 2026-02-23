@@ -246,13 +246,20 @@ class CoWorkShieldApp(App[None]):
             self._set_status("Force re-anonymize requires an override reason.")
             return
 
-        if allow_lossy_xlsx or force_reanonymize:
+        risk_lines: list[str] = []
+        if path.suffix.lower() == ".pdf":
+            risk_lines.append(
+                "- PDF inputs are converted to Markdown/DOCX output; original PDF layout is not reconstructed."
+            )
+        if allow_lossy_xlsx:
+            risk_lines.append("- Allow lossy XLSX processing is enabled.")
+        if force_reanonymize:
+            risk_lines.append("- Force re-anonymize override is enabled.")
+            risk_lines.append(f"- Reason: {override_reason}")
+
+        if risk_lines:
             prompt_lines = ["This anonymize operation includes high-risk overrides:"]
-            if allow_lossy_xlsx:
-                prompt_lines.append("- Allow lossy XLSX processing is enabled.")
-            if force_reanonymize:
-                prompt_lines.append("- Force re-anonymize override is enabled.")
-                prompt_lines.append(f"- Reason: {override_reason}")
+            prompt_lines.extend(risk_lines)
             prompt_lines.append("Proceed?")
             confirmed = await self.push_screen_wait(ConfirmRiskScreen("\n".join(prompt_lines)))
             if not confirmed:

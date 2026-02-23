@@ -144,6 +144,11 @@ def anonymize_file(
 ) -> UIOperationResult:
     """Run anonymization and return UI-friendly payload."""
     mgr = WorkspaceManager()
+    workspace_created = False
+    try:
+        mgr.get_workspace_metadata(workspace)
+    except WorkspaceNotFoundError:
+        workspace_created = True
     ctx = mgr.get_or_create_workspace(workspace, ttl_hours=ttl_hours)
 
     input_path = Path(file_path).expanduser().resolve()
@@ -186,6 +191,11 @@ def anonymize_file(
         summary += f" Columns: {', '.join(selected_columns)}."
         if not effective_detect_pii:
             summary += " Detection: column-only."
+    if workspace_created:
+        summary += (
+            " New workspace created. Export recovery key to avoid unrecoverable key-loss:"
+            f" cowork-shield workspace export-key --workspace {workspace} --output ~/.cowork_shield/recovery/{workspace}.recovery.key."
+        )
     return UIOperationResult(
         path=str(result.output_path),
         summary=summary,

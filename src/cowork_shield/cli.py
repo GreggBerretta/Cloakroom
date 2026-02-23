@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 import getpass
 import json
 import logging as py_logging
+import os
 from pathlib import Path
 import stat
 
@@ -31,10 +32,15 @@ from cowork_shield.logging import (
     read_audit_events,
 )
 from cowork_shield.exceptions import CoWorkShieldError
+from cowork_shield.exceptions import WorkspaceNotFoundError
 from cowork_shield.pipeline.anonymize import AnonymizePipeline
 from cowork_shield.pipeline.columns import inspect_columns
 from cowork_shield.pipeline.restore import RestorePipeline
-from cowork_shield.vault.keychain import get_master_key, store_master_key
+from cowork_shield.vault.keychain import (
+    get_master_key,
+    store_master_key,
+    verify_keychain_permissions,
+)
 from cowork_shield.vault.recovery import (
     export_encrypted_master_key,
     import_encrypted_master_key,
@@ -42,6 +48,7 @@ from cowork_shield.vault.recovery import (
 from cowork_shield.workspace.manager import WorkspaceManager
 
 console = Console()
+ONBOARDING_MARKER = Path.home() / ".cowork_shield" / ".onboarding_complete"
 
 
 def _show_error(exc: Exception) -> None:
@@ -65,6 +72,62 @@ def _resolve_passphrase(passphrase: str | None, *, confirm: bool) -> str:
         hide_input=True,
         confirmation_prompt=confirm,
     )
+
+
+def _workspace_exists(mgr: WorkspaceManager, name: str) -> bool:
+    try:
+        mgr.get_workspace_metadata(name)
+        return True
+    except WorkspaceNotFoundError:
+        return False
+
+
+def _get_or_create_workspace_with_warning(
+    mgr: WorkspaceManager,
+    name: str,
+    *,
+    ttl_hours: int = 168,
+):
+    existed = _workspace_exists(mgr, name)
+    ctx = mgr.get_or_create_workspace(name, ttl_hours=ttl_hours)
+    if not existed:
+        console.print(
+            "[bold yellow]New workspace created.[/] "
+            "Export a recovery key now to avoid irreversible key-loss recovery failure:"
+        )
+        console.print(
+            f"  [dim]cowork-shield workspace export-key --workspace {name} "
+            f"--output ~/.cowork_shield/recovery/{name}.recovery.key[/]"
+        )
+        log_event(
+            "cli",
+            py_logging.WARNING,
+            "workspace_created_recovery_warning",
+            "New workspace created; recovery key export recommended",
+            workspace_id=ctx.workspace_id,
+            metadata={"workspace_name": name},
+        )
+    return ctx, not existed
+
+
+def _mark_onboarding_complete(workspace: str) -> None:
+    ONBOARDING_MARKER.parent.mkdir(parents=True, exist_ok=True)
+    ONBOARDING_MARKER.write_text(
+        json.dumps(
+            {
+                "completed_at": datetime.now(timezone.utc).isoformat(),
+                "workspace": workspace,
+                "user": getpass.getuser(),
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    os.chmod(ONBOARDING_MARKER, 0o600)
+
+
+def _is_onboarding_complete() -> bool:
+    return ONBOARDING_MARKER.exists()
 
 
 @click.group()
@@ -113,6 +176,108 @@ def main(ctx, verbose, no_logging, encrypt_logs):
             "[bold yellow]DEBUG logging enabled.[/] Logs are sanitized, "
             "but review before sharing externally."
         )
+    if not _is_onboarding_complete() and ctx.invoked_subcommand not in {None, "onboarding"}:
+        console.print(
+            "[bold yellow]First-run onboarding is not complete.[/] "
+            "Run [bold]cowork-shield onboarding[/] to create a workspace and export a recovery key."
+        )
+
+
+@main.command("onboarding")
+@click.option(
+    "-w",
+    "--workspace",
+    default="default",
+    show_default=True,
+    help="Workspace to initialize for pilot usage.",
+)
+@click.option(
+    "--ttl",
+    type=int,
+    default=168,
+    show_default=True,
+    help="Workspace TTL in hours.",
+)
+@click.option(
+    "--export-key/--no-export-key",
+    default=True,
+    show_default=True,
+    help="Export encrypted recovery key during onboarding.",
+)
+@click.option(
+    "-o",
+    "--output",
+    "output_path",
+    default="",
+    help="Recovery key output path (default: ~/.cowork_shield/recovery/<workspace>.recovery.key).",
+)
+@click.option(
+    "--passphrase",
+    default=None,
+    help="Passphrase for recovery key export (prompted if omitted).",
+)
+def onboarding_cmd(workspace, ttl, export_key, output_path, passphrase):
+    """Run first-run onboarding wizard for pilot users."""
+    try:
+        mgr = WorkspaceManager()
+        ctx, _created = _get_or_create_workspace_with_warning(mgr, workspace, ttl_hours=ttl)
+        console.print("[green]Workspace ready.[/]")
+        console.print(f"  Workspace: {ctx.workspace_name}")
+        console.print(f"  ID:        {ctx.workspace_id}")
+
+        if export_key:
+            destination = (
+                Path(output_path).expanduser()
+                if output_path.strip()
+                else Path.home() / ".cowork_shield" / "recovery" / f"{workspace}.recovery.key"
+            )
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            if destination.exists() and not click.confirm(
+                f"Recovery key output exists at {destination}. Overwrite?", default=False
+            ):
+                raise click.ClickException("Recovery key export skipped by user.")
+
+            resolved_passphrase = _resolve_passphrase(passphrase, confirm=True)
+            payload = export_encrypted_master_key(
+                workspace_id=ctx.workspace_id,
+                master_key=ctx.master_key,
+                passphrase=resolved_passphrase,
+            )
+            destination.write_bytes(payload)
+            destination.chmod(stat.S_IRUSR | stat.S_IWUSR)
+            append_audit_event(
+                ctx,
+                event="key_exported",
+                fields={
+                    "user": getpass.getuser(),
+                    "export_path": str(destination.resolve()),
+                },
+            )
+            console.print("[green]Recovery key exported.[/]")
+            console.print(f"  Output: {destination}")
+            console.print("  File mode: 600")
+            console.print(
+                "[bold yellow]Warning:[/] Losing both Keychain entry and recovery key "
+                "makes workspace data cryptographically unrecoverable."
+            )
+
+        _mark_onboarding_complete(workspace)
+        log_event(
+            "cli",
+            py_logging.INFO,
+            "onboarding_complete",
+            "Onboarding completed",
+            workspace_id=ctx.workspace_id,
+            metadata={"workspace_name": workspace, "export_key": bool(export_key)},
+        )
+        console.print("[green]Onboarding complete.[/]")
+
+    except click.ClickException as e:
+        _show_error(e)
+        raise SystemExit(1)
+    except CoWorkShieldError as e:
+        _show_error(e)
+        raise SystemExit(1)
 
 
 @main.group("logs")
@@ -342,6 +507,7 @@ def logs_delete(workspace_name, all_audits, yes):
     "--hebrew-backend",
     type=click.Choice(HEBREW_BACKEND_CHOICES, case_sensitive=False),
     default="auto",
+    hidden=True,
     help="Hebrew NLP backend: auto, spacy, stanza, or transformers.",
 )
 @click.option(
@@ -349,6 +515,7 @@ def logs_delete(workspace_name, all_audits, yes):
     type=str,
     default="he",
     show_default=True,
+    hidden=True,
     help="Stanza model id for Hebrew backend.",
 )
 @click.option(
@@ -356,6 +523,7 @@ def logs_delete(workspace_name, all_audits, yes):
     type=str,
     default="CordwainerSmith/GolemPII-v1",
     show_default=True,
+    hidden=True,
     help="Transformers model id for Hebrew backend.",
 )
 @click.option(
@@ -447,11 +615,17 @@ def anonymize(
             )
 
         mgr = WorkspaceManager()
-        ctx = mgr.get_or_create_workspace(workspace, ttl_hours=ttl)
+        ctx, _created = _get_or_create_workspace_with_warning(mgr, workspace, ttl_hours=ttl)
 
         input_path = Path(file)
         output_path = Path(output) if output else None
         selected_columns = parse_columns_option(columns)
+
+        if input_path.suffix.lower() == ".pdf":
+            console.print(
+                "[bold yellow]PDF input warning:[/] "
+                "This will output [bold].md[/] or [bold].docx[/], not a reconstructed PDF."
+            )
 
         pipeline = AnonymizePipeline(
             ctx,
@@ -645,6 +819,7 @@ def restore(file, output, workspace):
     "--hebrew-backend",
     type=click.Choice(HEBREW_BACKEND_CHOICES, case_sensitive=False),
     default="auto",
+    hidden=True,
     help="Hebrew NLP backend: auto, spacy, stanza, or transformers.",
 )
 @click.option(
@@ -652,6 +827,7 @@ def restore(file, output, workspace):
     type=str,
     default="he",
     show_default=True,
+    hidden=True,
     help="Stanza model id for Hebrew backend.",
 )
 @click.option(
@@ -659,6 +835,7 @@ def restore(file, output, workspace):
     type=str,
     default="CordwainerSmith/GolemPII-v1",
     show_default=True,
+    hidden=True,
     help="Transformers model id for Hebrew backend.",
 )
 @click.option(
@@ -701,7 +878,7 @@ def shield_clipboard_cmd(
             )
 
         mgr = WorkspaceManager()
-        ctx = mgr.get_or_create_workspace(workspace)
+        ctx, _created = _get_or_create_workspace_with_warning(mgr, workspace)
 
         result = shield_clipboard(
             ctx,
@@ -943,6 +1120,95 @@ def workspace_show(name, show_mappings, show_audit):
                 console.print(audit_table)
 
         console.print()
+
+    except CoWorkShieldError as e:
+        _show_error(e)
+        raise SystemExit(1)
+
+
+@workspace_group.command("verify-security")
+@click.option(
+    "-w",
+    "--workspace",
+    "workspace_name",
+    default="",
+    help="Optional workspace name to scope vault-permission checks.",
+)
+def workspace_verify_security(workspace_name):
+    """Verify keychain and vault file permission hardening."""
+    try:
+        mgr = WorkspaceManager()
+        names: list[str]
+        if workspace_name.strip():
+            names = [workspace_name.strip()]
+            mgr.get_workspace_metadata(names[0])
+        else:
+            names = [item["name"] for item in mgr.list_workspaces()]
+
+        table = Table(title="Security Verification")
+        table.add_column("Check", style="cyan")
+        table.add_column("Target")
+        table.add_column("Result")
+        table.add_column("Detail", style="dim")
+
+        failures = 0
+        for name in names:
+            metadata = mgr.get_workspace_metadata(name)
+            vault_path = Path(metadata["vault_path"])
+            if not vault_path.exists():
+                failures += 1
+                table.add_row(
+                    "Vault File Permissions",
+                    name,
+                    "[red]FAIL[/]",
+                    f"Missing vault file: {vault_path}",
+                )
+                continue
+
+            mode_value = vault_path.stat().st_mode & 0o777
+            mode_text = stat.filemode(vault_path.stat().st_mode)
+            if mode_value != 0o600:
+                failures += 1
+                table.add_row(
+                    "Vault File Permissions",
+                    name,
+                    "[red]FAIL[/]",
+                    f"{vault_path} mode {mode_text} (expected -rw-------)",
+                )
+            else:
+                table.add_row(
+                    "Vault File Permissions",
+                    name,
+                    "[green]PASS[/]",
+                    f"{vault_path} mode {mode_text}",
+                )
+
+        keychain_ok, keychain_detail = verify_keychain_permissions()
+        if not keychain_ok:
+            failures += 1
+        table.add_row(
+            "Keychain Service Check",
+            "cowork-shield",
+            "[green]PASS[/]" if keychain_ok else "[red]FAIL[/]",
+            keychain_detail,
+        )
+
+        console.print(table)
+        log_event(
+            "cli",
+            py_logging.INFO,
+            "workspace_verify_security",
+            "Workspace security verification complete",
+            metadata={
+                "workspace_scope": workspace_name.strip(),
+                "failures": failures,
+                "keychain_ok": keychain_ok,
+                "workspaces_checked": len(names),
+            },
+        )
+
+        if failures:
+            raise SystemExit(1)
 
     except CoWorkShieldError as e:
         _show_error(e)

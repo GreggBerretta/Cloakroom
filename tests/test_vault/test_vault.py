@@ -1,5 +1,7 @@
 """Tests for the vault manager."""
 
+import os
+
 import pytest
 
 from cowork_shield.exceptions import VaultCorruptedError
@@ -94,3 +96,8 @@ class TestVault:
         assert "PERSON::john smith" in loaded.mappings
         assert loaded.mappings["PERSON::john smith"].original_value == "John Smith"
         assert loaded.token_counter["PERSON"] == 1
+
+    def test_vault_file_permissions_enforced(self, vault, vault_path, master_key, sample_vault_data):
+        vault.save(sample_vault_data, master_key)
+        mode = os.stat(vault_path).st_mode & 0o777
+        assert mode == 0o600

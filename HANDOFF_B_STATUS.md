@@ -51,9 +51,14 @@ This document is intended to be sufficient for another engineer to continue with
 - Signed workspace audit trail is implemented with HMAC tamper-evidence and CLI inspection (`workspace show --audit`).
 - Log lifecycle commands are implemented (`logs export`, `logs delete`) with sanitized support bundles.
 - CLI/TUI/Gradio/IPC entrypoints now initialize component-specific logging defaults and support `--verbose`, `--no-logging`, `--encrypt-logs`.
+- First-run onboarding flow is implemented (`cowork-shield onboarding`) with workspace initialization and recovery-key export flow.
+- Workspace security verification command is implemented (`workspace verify-security`) covering vault file permissions and keychain service checks.
+- Vault atomic writes now enforce `0600` permissions on persisted vault files.
+- Gradio runtime enforces localhost binding and now requires explicit PDF output acknowledgment before processing PDF input.
+- Security dependency scan workflow is implemented (`.github/workflows/security-scan.yml`) using `pip-audit`.
 
 ### Validation
-- Full test suite: **277 passed**.
+- Full test suite: **291 passed**.
 - EC-15 suite: **18 passed**.
 - Fork-only bootstrap validation (Feb 22, 2026):
   - `en_core_web_lg` installed in local fork clone.
@@ -72,6 +77,7 @@ This document is intended to be sufficient for another engineer to continue with
 - `INSTALL.md` (installation + onboarding)
 - `TROUBLESHOOTING.md` (support runbook + escalation)
 - `PERFORMANCE.md` (one-time pilot baseline metrics)
+- `PILOT_QUICKSTART.md` (one-page pilot operator guide)
 
 ### Core Engine (Source)
 - CLI commands: `src/cowork_shield/cli.py`
@@ -101,6 +107,7 @@ This document is intended to be sufficient for another engineer to continue with
 - Main CI: `.github/workflows/ci.yml`
 - EC-15 per-push gate: `.github/workflows/ec15-gate.yml`
 - Weekly trust gate: `.github/workflows/weekly-trust-gate.yml`
+- Security dependency scan: `.github/workflows/security-scan.yml`
 
 ## 4) Command Surface (Current)
 ### Core Commands
@@ -115,8 +122,10 @@ This document is intended to be sufficient for another engineer to continue with
 - `cowork-shield workspace list`
 - `cowork-shield workspace show WORKSPACE`
 - `cowork-shield workspace show WORKSPACE --audit`
+- `cowork-shield workspace verify-security`
 - `cowork-shield workspace delete WORKSPACE`
 - `cowork-shield workspace cleanup`
+- `cowork-shield onboarding`
 - `cowork-shield logs export ...`
 - `cowork-shield logs delete ...`
 - `cowork-shield-tui` (Textual terminal UI)
@@ -156,6 +165,7 @@ This document is intended to be sufficient for another engineer to continue with
 - UI API helper coverage: `tests/test_ui/`
 - IPC protocol/framing/server: `tests/test_ipc/`
 - Logging/audit observability: `tests/test_logging/`
+- Keychain + vault security checks: `tests/test_vault/test_keychain_security.py`, `tests/test_vault/test_vault.py`
 
 ### EC-15 Coverage (Current)
 - Crash consistency
@@ -219,9 +229,10 @@ This document is intended to be sufficient for another engineer to continue with
 | --- | --- | --- |
 | Fork-Only English Bootstrap | ✅ | `en_core_web_lg` installed; detection + EC-15 smoke = `29 passed` |
 | Fork-Only Full Suite Prereq | ⚠️ | Hebrew model still required for full suite (`he_core_news_sm` or fallback) |
-| Full Test Suite | ✅ | `277 passed` |
+| Full Test Suite | ✅ | `291 passed` |
 | EC-15 State Integrity | ✅ | `18 passed` |
 | CI Automation | ✅ | `ci.yml`, `ec15-gate.yml`, `weekly-trust-gate.yml` |
+| Dependency Vulnerability Scan | ✅ | `security-scan.yml`, local `uvx --with pip-audit pip-audit` reports no known vulnerabilities |
 | Install Path | ✅ | `INSTALL.md` |
 | UI Frontends | ✅ | `cowork-shield-tui`, `cowork-shield-gradio` |
 | Support Runbook | ✅ | `TROUBLESHOOTING.md` |

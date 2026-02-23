@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -38,6 +39,7 @@ class Vault:
         plaintext = json.dumps(data.to_dict(), ensure_ascii=False).encode("utf-8")
         encrypted = encrypt(plaintext, vault_key)
         atomic_write(self._path, encrypted)
+        os.chmod(self._path, 0o600)
 
     def load(self, master_key: bytes) -> VaultData:
         """Load and decrypt vault, checking TTL."""

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import keyring
+import subprocess
 
 from cowork_shield.exceptions import KeychainError
 
@@ -39,3 +40,26 @@ def delete_master_key(workspace_id: str) -> None:
         pass  # Already deleted
     except Exception as e:
         raise KeychainError(f"Failed to delete key from Keychain: {e}") from e
+
+
+def verify_keychain_permissions() -> tuple[bool, str]:
+    """Verify service entries are managed by macOS Keychain controls."""
+    try:
+        proc = subprocess.run(
+            ["security", "find-generic-password", "-s", SERVICE_NAME],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError:
+        return False, "macOS security CLI not found."
+    except Exception as e:
+        raise KeychainError(f"Failed to verify Keychain permissions: {e}") from e
+
+    if proc.returncode == 0:
+        return True, "Keychain service entry found and gated by macOS security."
+
+    stderr = (proc.stderr or "").strip().lower()
+    if "could not be found" in stderr or "item could not be found" in stderr:
+        return False, "No cowork-shield Keychain entry found."
+    return False, f"Keychain check failed: {proc.stderr.strip() or proc.stdout.strip() or 'unknown error'}"

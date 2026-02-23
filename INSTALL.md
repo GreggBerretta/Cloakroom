@@ -2,6 +2,18 @@
 
 This install path is for the HANDOFF B internal validation build plus the Phase 2+ wrapper-core/IPC layer.
 
+> [!WARNING]
+> **PDF is input-only.**
+> Uploading `.pdf` creates extracted `.md` or `.docx` output. CoWork Shield does **not** reconstruct original PDF binaries or exact layout.
+
+> [!WARNING]
+> **XLSX chart/image loss risk is blocking unless explicitly acknowledged.**
+> If an XLSX contains charts/images, processing is blocked unless `--allow-lossy-xlsx` is passed with explicit user confirmation.
+
+> [!WARNING]
+> **Recovery key is mandatory for disaster recovery.**
+> If the macOS Keychain entry is lost and no recovery key export exists, workspace mappings are cryptographically unrecoverable.
+
 ## Distribution Strategy
 Current recommendation:
 
@@ -10,6 +22,7 @@ Current recommendation:
 - Not recommended now: PyInstaller packaging (defer unless users reject Python environment setup)
 
 This document covers the current supported path: `uv sync`.
+For pilot operators, see `/Users/greggberretta/Documents/New project/cowork-shield-fork-only/PILOT_QUICKSTART.md`.
 
 ## Prerequisites
 - macOS (tested on Apple Silicon + recent Intel)
@@ -43,6 +56,17 @@ Optional shell alias for daily usage:
 alias cws='uv run cowork-shield'
 ```
 
+## First-Run Onboarding (Pilot Required)
+Run this once per machine/user before pilot work:
+```bash
+uv run cowork-shield onboarding --workspace default
+```
+
+Onboarding:
+- creates or validates the workspace
+- exports encrypted recovery key (`0600`) unless disabled
+- writes local first-run completion marker
+
 ## Verify
 ```bash
 uv run cowork-shield --version
@@ -70,6 +94,7 @@ uv run cowork-shield anonymize ./brief.pdf -w client-a --pdf-output-format md
 uv run cowork-shield inspect-columns ./deals.xlsx
 uv run cowork-shield anonymize ./deals.xlsx -w client-a --columns "Deal ID,Client Name"
 uv run cowork-shield anonymize ./deals.csv -w client-a --columns A,C --detect-pii
+uv run cowork-shield workspace verify-security
 ```
 
 PDF note:
@@ -89,6 +114,11 @@ Spreadsheet column-selective anonymization:
 - `inspect-columns` shows valid selectors before running anonymize.
 - `inspect-columns` also shows sample values (first 3 rows, truncated) to reduce wrong-column selection risk.
 - Column mode currently applies to `.csv` and `.xlsx` only.
+- Common pilot use-cases:
+  - Deal IDs / case numbers
+  - Client identifiers and internal codes
+  - Pricing/revenue columns
+  - Proprietary KPI columns
 
 ## Textual UI (Terminal)
 Launch the terminal UI:
@@ -255,6 +285,9 @@ uv run cowork-shield --verbose ...
 uv run cowork-shield --no-logging ...
 uv run cowork-shield --encrypt-logs ...
 ```
+
+> [!WARNING]
+> Debug logs are sanitized, but users should still review exports before sharing outside the support channel.
 
 Export sanitized logs for support:
 ```bash

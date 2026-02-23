@@ -22,6 +22,7 @@ class TestGradioShieldGuardrails:
             True,
             "",
             True,
+            False,
         )
         assert output_file is None
         assert "Reason is required" in status
@@ -38,6 +39,7 @@ class TestGradioShieldGuardrails:
             True,
             False,
             "",
+            False,
             False,
         )
         assert output_file is None
@@ -61,10 +63,29 @@ class TestGradioShieldGuardrails:
             False,
             "",
             False,
+            False,
         )
         assert output_file is None
         assert "IncompleteRestorationError" in status
         assert "PERSON_00001" not in status
+
+    def test_requires_pdf_acknowledgement(self):
+        uploaded = SimpleNamespace(name="/tmp/fake.pdf")
+        output_file, _, status = gradio_app.shield(
+            uploaded,
+            "default",
+            "auto",
+            "md",
+            [],
+            False,
+            False,
+            False,
+            "",
+            False,
+            False,
+        )
+        assert output_file is None
+        assert "input-only" in status.lower()
 
     def test_refresh_column_dropdown_uses_pipeline_columns(self, monkeypatch):
         uploaded = SimpleNamespace(name="/tmp/fake.csv")
@@ -83,3 +104,11 @@ class TestGradioShieldGuardrails:
             ("A: Name [text] (e.g. Alice)", "Name"),
             ("B: Deal ID [text] (e.g. DEAL-1)", "Deal ID"),
         ]
+
+    def test_launch_blocks_non_localhost(self):
+        try:
+            gradio_app.launch(["--server-name", "0.0.0.0"])
+        except ValueError as exc:
+            assert "127.0.0.1" in str(exc)
+        else:
+            raise AssertionError("Expected localhost enforcement error")

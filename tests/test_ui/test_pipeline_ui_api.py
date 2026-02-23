@@ -95,6 +95,9 @@ class TestUIAPIHelpers:
         preview_called = {"value": False}
 
         class FakeWorkspaceManager:
+            def get_workspace_metadata(self, _workspace):
+                return {"workspace_id": "existing"}
+
             def get_or_create_workspace(self, workspace, ttl_hours=168):
                 return SimpleNamespace(workspace_name=workspace)
 
@@ -132,3 +135,34 @@ class TestUIAPIHelpers:
 
         assert preview_called["value"] is False
         assert "Detection: column-only" in result.summary
+
+    def test_anonymize_file_new_workspace_adds_recovery_warning(self, monkeypatch, tmp_path):
+        class FakeWorkspaceManager:
+            def get_workspace_metadata(self, _workspace):
+                raise ui_api.WorkspaceNotFoundError("default")
+
+            def get_or_create_workspace(self, workspace, ttl_hours=168):
+                return SimpleNamespace(workspace_name=workspace)
+
+        class FakePipeline:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def run(self, input_path, out_path):
+                output = out_path or input_path.with_name(input_path.stem + ".anonymized.csv")
+                output.write_text("ok", encoding="utf-8")
+                return SimpleNamespace(
+                    input_path=input_path,
+                    output_path=output,
+                    entities_found=1,
+                    tokens_applied=1,
+                )
+
+        monkeypatch.setattr(ui_api, "WorkspaceManager", FakeWorkspaceManager)
+        monkeypatch.setattr(ui_api, "AnonymizePipeline", FakePipeline)
+        monkeypatch.setattr(ui_api, "preview_entities", lambda *args, **kwargs: [])
+
+        input_path = tmp_path / "sheet.csv"
+        input_path.write_text("Name\nAlice\n", encoding="utf-8")
+        result = ui_api.anonymize_file(input_path, "default")
+        assert "Export recovery key" in result.summary

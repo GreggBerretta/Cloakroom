@@ -71,3 +71,15 @@ class TestRecoveryExportImport:
         assert payload["kdf"]["name"] == "scrypt"
         assert payload["cipher"]["name"] == "aes-256-gcm"
 
+    def test_export_payload_does_not_expose_master_key_material(self):
+        master_key = generate_master_key()
+        blob = export_encrypted_master_key(
+            workspace_id="ws-456",
+            master_key=master_key,
+            passphrase="another-passphrase",
+        )
+        payload_text = blob.decode("utf-8")
+        assert master_key.hex() not in payload_text
+        payload = json.loads(payload_text)
+        assert "ciphertext_b64" in payload["cipher"]
+        assert payload["cipher"]["ciphertext_b64"]

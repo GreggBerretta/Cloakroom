@@ -59,6 +59,7 @@ def shield(
     force_reanonymize,
     override_reason,
     confirm_risky_operation,
+    confirm_pdf_output,
 ):
     if uploaded_file is None:
         return None, "<p><strong>No file uploaded.</strong></p>", "No file uploaded."
@@ -81,6 +82,12 @@ def shield(
     workspace_name = _normalize_workspace(workspace)
     language_value = (language or "auto").strip().lower() or "auto"
     input_path = Path(uploaded_file.name)
+    if input_path.suffix.lower() == ".pdf" and not confirm_pdf_output:
+        return (
+            None,
+            "<p><strong>PDF acknowledgement required.</strong></p>",
+            "PDF is input-only. Confirm output will be .md/.docx before continuing.",
+        )
     selected = [str(item).strip() for item in (selected_columns or []) if str(item).strip()]
     effective_detect_pii = bool(detect_pii) if selected else True
 
@@ -181,6 +188,10 @@ def create_demo() -> gr.Blocks:
                 label="I confirm I want to proceed with risky overrides",
                 value=False,
             )
+            confirm_pdf_output = gr.Checkbox(
+                label="I understand PDF inputs output .md/.docx (not reconstructed .pdf)",
+                value=False,
+            )
             with gr.Row():
                 shield_btn = gr.Button("Anonymize", variant="primary")
                 shield_refresh = gr.Button("Refresh Workspaces")
@@ -206,6 +217,7 @@ def create_demo() -> gr.Blocks:
                     force_reanonymize,
                     override_reason,
                     confirm_risky_operation,
+                    confirm_pdf_output,
                 ],
                 outputs=[shield_output_file, shield_entity_table, shield_status],
             )

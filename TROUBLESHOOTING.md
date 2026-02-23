@@ -65,6 +65,9 @@ If logs are not present:
 - Check whether command used `--no-logging`
 - Re-run with `--verbose` to increase diagnostic detail (still sanitized)
 
+> [!WARNING]
+> Do not post debug/support logs in public channels. Share only via approved internal support channels after review.
+
 ## 2b) IPC / Wrapper Hard-Fail Conditions
 If wrapper integration reports protocol hard-fail:
 - Verify Mode A or Mode B process is running:
@@ -79,6 +82,11 @@ uv run cowork-shield ipc-server --socket-path ~/.cowork-shield/ipc/engine.sock
 - For Mode B, confirm socket permissions remain `600`.
 - Any partial/malformed frame is a hard-fail by design; restart wrapper and daemon after correction.
 - If license metadata is missing from payload responses, treat as protocol drift and hard-fail.
+
+Run pilot-blocking local security verification:
+```bash
+uv run cowork-shield workspace verify-security
+```
 
 ## 2a) Column Selection Errors (CSV/XLSX)
 Typical causes:
@@ -157,6 +165,11 @@ If port is in use, launch manually with a custom port:
 ```bash
 uv run python -c "from cowork_shield.ui.gradio_app import create_demo; create_demo().launch(server_name='127.0.0.1', server_port=7861)"
 ```
+Verify active bind:
+```bash
+netstat -an | grep 7860
+```
+Expected bind target: `127.0.0.1:7860` (never `0.0.0.0:7860`).
 If spreadsheet columns do not appear:
 - Re-upload the file to trigger column refresh.
 - Confirm file extension is `.csv` or `.xlsx`.
@@ -182,6 +195,9 @@ uv sync --extra pdf_docling
 If you accidentally run restore on `.pdf`, rerun restore against the tokenized Markdown or DOCX output from anonymize.
 
 ## 8) Hebrew Detection Issues
+> [!WARNING]
+> Hebrew detection quality is currently lower than English. Treat Hebrew PII detection as assistive and verify high-stakes outputs manually during pilot.
+
 If Hebrew detection fails to initialize:
 ```bash
 uv run python -m spacy download he_core_news_sm || uv run python -m spacy download xx_ent_wiki_sm
