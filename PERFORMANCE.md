@@ -34,3 +34,43 @@
 ## Notes
 - This is a one-time pilot baseline for comparison when slowness is reported.
 - No automated thresholds are enforced from this file yet.
+
+## Hebrew Benchmark Update (Post-Optimization)
+- Date: 2026-02-23 15:00 UTC
+- Host: Apple M4, macOS 26.3, Python 3.12.12
+- Hebrew model availability:
+  - `he_core_news_sm`: not installed
+  - `xx_ent_wiki_sm`: installed (fallback path)
+- Detector mode: `--language he` (spaCy backend path)
+
+### Dataset / Method
+- Synthetic Hebrew CSV with 10,000 rows:
+  - `name`, `email`, `company`, `phone`, `notes`
+  - Example row values include Hebrew script names/notes and email/phone fields.
+- Hebrew markdown and DOCX sample documents also benchmarked.
+- Commands timed end-to-end via CLI wall-clock:
+  - `uv run cowork-shield anonymize <he_10k.csv> -w <ws> --language he`
+  - `uv run cowork-shield restore <he_10k.anonymized.csv> -w <ws>`
+  - Column-only and hybrid variants:
+    - `--columns "A,C" --no-detect-pii`
+    - `--columns "A,C" --detect-pii`
+  - Markdown/DOCX:
+    - `uv run cowork-shield anonymize <file> -w <ws> --language he`
+    - `uv run cowork-shield restore <anonymized_file> -w <ws>`
+
+### Hebrew Results
+- 10k Hebrew CSV anonymize (full detect): **45.89s**
+- 10k Hebrew CSV restore (full detect path): **0.77s**
+- 10k Hebrew CSV anonymize (column-only): **1.94s**
+- 10k Hebrew CSV restore (column-only): **0.86s**
+- 10k Hebrew CSV anonymize (column + pii): **30.05s**
+- 10k Hebrew CSV restore (column + pii): **0.90s**
+- Hebrew markdown anonymize: **1.86s**
+- Hebrew markdown restore: **0.62s**
+- Hebrew DOCX anonymize: **1.84s**
+- Hebrew DOCX restore: **0.64s**
+
+### Observations
+- Hebrew spreadsheet anonymization is significantly faster than prior English full-detect baseline in this environment, but still high in full-detect mode.
+- Column-only remains the fastest and most stable path for user-perceived responsiveness.
+- Restore latency is now sub-second for all measured Hebrew document paths in this benchmark.
