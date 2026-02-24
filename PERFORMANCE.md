@@ -1,4 +1,4 @@
-# CoWork Shield Performance Baseline (HANDOFF B)
+# Cloakroom Performance Baseline (HANDOFF B)
 
 ## Baseline Context
 - Date: 2026-02-22 13:12:13 UTC
@@ -12,13 +12,13 @@
 - File benchmark dataset: synthetic CSV with 10,000 rows and columns:
   - `name`, `email`, `company`, `phone`, `notes`
 - Commands timed end-to-end via CLI wall-clock:
-  - `uv run cowork-shield anonymize <10k.csv> -w perf-baseline-file`
-  - `uv run cowork-shield restore <10k.anonymized.csv> -w perf-baseline-file`
+  - `uv run cloakroom anonymize <10k.csv> -w perf-baseline-file`
+  - `uv run cloakroom restore <10k.anonymized.csv> -w perf-baseline-file`
 - Clipboard benchmark text:
   - `John Smith at Acme Corp can be reached at john.smith@example.com or (212) 555-1234.`
 - Clipboard measured across 5 runs using:
-  - `uv run cowork-shield shield-clipboard -w perf-baseline-clipboard`
-  - `uv run cowork-shield restore-clipboard -w perf-baseline-clipboard`
+  - `uv run cloakroom shield-clipboard -w perf-baseline-clipboard`
+  - `uv run cloakroom restore-clipboard -w perf-baseline-clipboard`
 
 ## Baseline Results
 - 10k-row CSV anonymize: **95.74 seconds**
@@ -49,14 +49,14 @@
   - Example row values include Hebrew script names/notes and email/phone fields.
 - Hebrew markdown and DOCX sample documents also benchmarked.
 - Commands timed end-to-end via CLI wall-clock:
-  - `uv run cowork-shield anonymize <he_10k.csv> -w <ws> --language he`
-  - `uv run cowork-shield restore <he_10k.anonymized.csv> -w <ws>`
+  - `uv run cloakroom anonymize <he_10k.csv> -w <ws> --language he`
+  - `uv run cloakroom restore <he_10k.anonymized.csv> -w <ws>`
   - Column-only and hybrid variants:
     - `--columns "A,C" --no-detect-pii`
     - `--columns "A,C" --detect-pii`
   - Markdown/DOCX:
-    - `uv run cowork-shield anonymize <file> -w <ws> --language he`
-    - `uv run cowork-shield restore <anonymized_file> -w <ws>`
+    - `uv run cloakroom anonymize <file> -w <ws> --language he`
+    - `uv run cloakroom restore <anonymized_file> -w <ws>`
 
 ### Hebrew Results
 - 10k Hebrew CSV anonymize (full detect): **45.89s**
@@ -79,10 +79,10 @@
 - Prior run date: 2026-02-24 05:38 UTC
 - Revised run date: 2026-02-24 06:17 UTC
 - Revised commands:
-  - `uv run cowork-shield benchmark-performance -w perf-opt2-en-balanced --rows 10000 --language en --detection-mode balanced -o /tmp/cws_perf2_en_balanced.json`
-  - `uv run cowork-shield benchmark-performance -w perf-opt2-en-speed --rows 10000 --language en --detection-mode speed -o /tmp/cws_perf2_en_speed.json`
-  - `uv run cowork-shield benchmark-performance -w perf-opt2-he-balanced --rows 10000 --language he --detection-mode balanced -o /tmp/cws_perf2_he_balanced.json`
-  - `uv run cowork-shield benchmark-performance -w perf-opt2-he-speed --rows 10000 --language he --detection-mode speed -o /tmp/cws_perf2_he_speed.json`
+  - `uv run cloakroom benchmark-performance -w perf-opt2-en-balanced --rows 10000 --language en --detection-mode balanced -o /tmp/cloakroom_perf2_en_balanced.json`
+  - `uv run cloakroom benchmark-performance -w perf-opt2-en-speed --rows 10000 --language en --detection-mode speed -o /tmp/cloakroom_perf2_en_speed.json`
+  - `uv run cloakroom benchmark-performance -w perf-opt2-he-balanced --rows 10000 --language he --detection-mode balanced -o /tmp/cloakroom_perf2_he_balanced.json`
+  - `uv run cloakroom benchmark-performance -w perf-opt2-he-speed --rows 10000 --language he --detection-mode speed -o /tmp/cloakroom_perf2_he_speed.json`
 
 ### Results vs v11 Targets
 | Metric | Target (v11) | Prior (EN/HE) | Revised (EN balanced / HE balanced) | Status |

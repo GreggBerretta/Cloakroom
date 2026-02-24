@@ -6,8 +6,8 @@ from subprocess import CompletedProcess
 
 import pytest
 
-from cowork_shield.exceptions import KeychainError
-from cowork_shield.vault import keychain
+from cloakroom.exceptions import KeychainError
+from cloakroom.vault import keychain
 
 
 def test_verify_keychain_permissions_pass(monkeypatch):
@@ -34,7 +34,7 @@ def test_verify_keychain_permissions_missing_entry(monkeypatch):
     )
     ok, detail = keychain.verify_keychain_permissions()
     assert ok is False
-    assert "No cowork-shield Keychain entry found" in detail
+    assert "No cloakroom Keychain entry found" in detail
 
 
 def test_verify_keychain_permissions_handles_missing_security_cli(monkeypatch):

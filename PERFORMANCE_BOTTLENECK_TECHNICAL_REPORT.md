@@ -1,4 +1,4 @@
-# CoWork Shield Performance Bottleneck Technical Report
+# Cloakroom Performance Bottleneck Technical Report
 
 ## 1) Purpose
 This document is a technical handoff for external performance experts.
@@ -10,7 +10,7 @@ It consolidates:
 - optimizations already attempted and their effects
 - current bottleneck hypotheses and recommended next experiments
 
-Scope is the HANDOFF_B-based fork implementation with v11 launch-prep additions.
+Scope is the HANDOFF_B-based implementation with v11 launch-prep additions.
 
 ## 2) Performance Targets (Current Gate)
 From Phase 2 v11 launch requirements:
@@ -50,8 +50,8 @@ Source: `PERFORMANCE.md`
 
 ### 4.3 v11 Launch-Gate Benchmark (2026-02-24)
 Command used:
-- `uv run cowork-shield benchmark-performance --rows 10000 --language en --output /tmp/cws_perf_en.json`
-- `uv run cowork-shield benchmark-performance --rows 10000 --language he --output /tmp/cws_perf_he.json`
+- `uv run cloakroom benchmark-performance --rows 10000 --language en --output /tmp/cloakroom_perf_en.json`
+- `uv run cloakroom benchmark-performance --rows 10000 --language he --output /tmp/cloakroom_perf_he.json`
 
 Results:
 - English 10k CSV anonymize: **48.95s**
@@ -99,13 +99,13 @@ Results:
 ## 6) What Has Been Tried So Far
 
 ### 6.1 Early cell-level detection pruning
-Implemented in `src/cowork_shield/handlers/pii_prefilter.py`.
+Implemented in `src/cloakroom/handlers/pii_prefilter.py`.
 - Skips empty/tiny/punctuation/no-signal cells before NER.
 - Avoids re-detecting already-tokenized values.
 - Effect: reduced wasted detector calls; did not solve 10k full-detect latency alone.
 
 ### 6.2 Detection engine caching and fast language paths
-Implemented in `src/cowork_shield/detection/engine.py`.
+Implemented in `src/cloakroom/detection/engine.py`.
 - Cell detection result cache (`_cell_detection_cache`) for repeated short values.
 - Fast language path:
   - Hebrew script quick detect
@@ -115,8 +115,8 @@ Implemented in `src/cowork_shield/detection/engine.py`.
 
 ### 6.3 Row-batched detection pass for CSV/XLSX
 Implemented in:
-- `src/cowork_shield/handlers/csv_handler.py`
-- `src/cowork_shield/handlers/xlsx.py`
+- `src/cloakroom/handlers/csv_handler.py`
+- `src/cloakroom/handlers/xlsx.py`
 
 Approach:
 - merge candidate cells in a row with delimiter
@@ -141,8 +141,8 @@ Implemented in spreadsheet handlers + CLI/UI.
 
 ### 6.6 Benchmark harness + CI gate added
 Implemented in:
-- `src/cowork_shield/performance/benchmark.py`
-- `src/cowork_shield/cli.py` (`benchmark-performance`)
+- `src/cloakroom/performance/benchmark.py`
+- `src/cloakroom/cli.py` (`benchmark-performance`)
 - `.github/workflows/performance-gate.yml`
 
 Effect:
@@ -195,19 +195,19 @@ Run and deliver:
 ## 10) Relevant Code and Artifacts for Expert Review
 
 Core paths:
-- `src/cowork_shield/handlers/csv_handler.py`
-- `src/cowork_shield/handlers/xlsx.py`
-- `src/cowork_shield/detection/engine.py`
-- `src/cowork_shield/handlers/pii_prefilter.py`
-- `src/cowork_shield/pipeline/anonymize.py`
-- `src/cowork_shield/performance/benchmark.py`
+- `src/cloakroom/handlers/csv_handler.py`
+- `src/cloakroom/handlers/xlsx.py`
+- `src/cloakroom/detection/engine.py`
+- `src/cloakroom/handlers/pii_prefilter.py`
+- `src/cloakroom/pipeline/anonymize.py`
+- `src/cloakroom/performance/benchmark.py`
 
 Benchmark docs:
 - `PERFORMANCE.md`
 
 Benchmark artifact examples:
-- `/tmp/cws_perf_en.json`
-- `/tmp/cws_perf_he.json`
+- `/tmp/cloakroom_perf_en.json`
+- `/tmp/cloakroom_perf_he.json`
 
 ## 11) Bottom Line
 - Reliability and recoverability controls are strong.

@@ -1,4 +1,4 @@
-# CoWork Shield Troubleshooting (HANDOFF B)
+# Cloakroom Troubleshooting (HANDOFF B)
 
 This runbook covers internal support for the HANDOFF B validation project.
 
@@ -26,18 +26,18 @@ UI-specific examples:
 - `UnsupportedFormatError`: file extension not currently handled by pipeline
 - `PdfExtractionError`: PDF extraction backend unavailable or extraction failed
 - `PdfInputOnlyError`: attempted to restore from `.pdf` instead of tokenized `.md`/`.docx`
-- `CoWorkShieldError`: generic surfaced error in TUI/Gradio operation wrapper
+- `CloakroomError`: generic surfaced error in TUI/Gradio operation wrapper
 - `DetectionError`: language model missing or Presidio detection initialization/analysis failure
 
 ## 2) Safe Log Collection (No PII)
 Collect these outputs only:
 
 ```bash
-uv run cowork-shield --version
+uv run cloakroom --version
 uv run python --version
-uv run cowork-shield workspace list
-uv run cowork-shield workspace show <workspace-name>
-uv run cowork-shield logs export --workspace <workspace-name> --output ./support-logs.json
+uv run cloakroom workspace list
+uv run cloakroom workspace show <workspace-name>
+uv run cloakroom logs export --workspace <workspace-name> --output ./support-logs.json
 ```
 
 Also collect:
@@ -56,7 +56,7 @@ If restore failure involves anonymized output (tokenized only), file sharing is 
 If anonymization failure involves live data, manually redact first.
 
 Logging defaults:
-- Location: `~/.cowork_shield/logs/`
+- Location: `~/.cloakroom/logs/`
 - Permissions: `0600`
 - Rotation: `10 MB x 5 files`
 - Retention: `30 days`
@@ -73,10 +73,10 @@ If wrapper integration reports protocol hard-fail:
 - Verify Mode A or Mode B process is running:
 ```bash
 # Mode A (default): subprocess stdio bridge
-uv run cowork-shield ipc-stdio
+uv run cloakroom ipc-stdio
 
 # Mode B: AF_UNIX socket daemon
-uv run cowork-shield ipc-server --socket-path ~/.cowork-shield/ipc/engine.sock
+uv run cloakroom ipc-server --socket-path ~/.cloakroom/ipc/engine.sock
 ```
 - Confirm wrapper and engine agree on protocol/schema hash via `HELLO`.
 - For Mode B, confirm socket permissions remain `600`.
@@ -85,9 +85,9 @@ uv run cowork-shield ipc-server --socket-path ~/.cowork-shield/ipc/engine.sock
 
 Run pilot-blocking local security verification:
 ```bash
-uv run cowork-shield workspace verify-security
+uv run cloakroom workspace verify-security
 # Optional raw fallback check (canonical vault path)
-stat -f "%Sp %N" ~/.cowork-shield/workspaces/*/vault.enc
+stat -f "%Sp %N" ~/.cloakroom/workspaces/*/vault.enc
 ```
 
 ## 2a) Column Selection Errors (CSV/XLSX)
@@ -99,12 +99,12 @@ Typical causes:
 
 Quick checks:
 ```bash
-uv run cowork-shield inspect-columns <file.csv|file.xlsx>
+uv run cloakroom inspect-columns <file.csv|file.xlsx>
 ```
 
 If you need combined behavior:
 ```bash
-uv run cowork-shield anonymize <file.xlsx> --columns "Deal ID,Client Name" --detect-pii
+uv run cloakroom anonymize <file.xlsx> --columns "Deal ID,Client Name" --detect-pii
 ```
 
 ## 3) Keychain / Recovery Failures
@@ -115,13 +115,13 @@ Recovery:
 1. Obtain encrypted recovery key file (`*.recovery.key`).
 2. Import:
 ```bash
-uv run cowork-shield workspace import-key --workspace <workspace-name> --input <path>
+uv run cloakroom workspace import-key --workspace <workspace-name> --input <path>
 ```
 3. Retry command.
 
 Admin override (replace existing keychain entry):
 ```bash
-uv run cowork-shield workspace import-key --workspace <workspace-name> --input <path> --force
+uv run cloakroom workspace import-key --workspace <workspace-name> --input <path> --force
 ```
 
 ## 4) EC-15 Failure Procedure
@@ -136,12 +136,12 @@ uv run pytest -q tests/test_state_integrity/test_ec15_state_integrity.py
    - exception code
    - reproduction steps
    - OS + Python versions
-   - sanitized support log bundle from `cowork-shield logs export`
+   - sanitized support log bundle from `cloakroom logs export`
 
 ## 5) Support Escalation
 Use internal support channel:
-- Slack: `#cowork-shield-pilot`
-- Backup email: `security@coworkshield.local` (replace with real alias)
+- Slack: `#cloakroom-pilot`
+- Backup email: `security@cloakroom.local` (replace with real alias)
 
 Escalate immediately for:
 - any silent mismatch concerns
@@ -151,7 +151,7 @@ Escalate immediately for:
 ## 6) UI Launch Troubleshooting
 Textual UI:
 ```bash
-uv run cowork-shield-tui
+uv run cloakroom-tui
 ```
 If it fails, verify dependency install:
 ```bash
@@ -160,12 +160,12 @@ uv sync --extra dev
 
 Gradio UI:
 ```bash
-uv run cowork-shield-gradio
+uv run cloakroom-gradio
 ```
 Security requirement: keep Gradio on localhost (`127.0.0.1`) only. Do not bind `0.0.0.0` or expose via external reverse proxy.
 If port is in use, launch manually with a custom port:
 ```bash
-uv run python -c "from cowork_shield.ui.gradio_app import create_demo; create_demo().launch(server_name='127.0.0.1', server_port=7861)"
+uv run python -c "from cloakroom.ui.gradio_app import create_demo; create_demo().launch(server_name='127.0.0.1', server_port=7861)"
 ```
 Verify active bind:
 ```bash
@@ -177,7 +177,7 @@ If spreadsheet columns do not appear:
 - Confirm file extension is `.csv` or `.xlsx`.
 
 Wrapper bridge note:
-- When launched from Swift wrapper bridge, UI child processes inherit `CWS_WRAPPER_IPC_MODE`.
+- When launched from Swift wrapper bridge, UI child processes inherit `CLOAKROOM_WRAPPER_IPC_MODE`.
 - `mode_a_stdio` is default; `mode_b_unix_socket` requires running `ipc-server` and valid socket path.
 
 ## 7) PDF Extraction Issues
@@ -209,8 +209,8 @@ The detector prefers `he_core_news_sm` and automatically falls back to `xx_ent_w
 
 If auto language selection is unstable for short text, force explicit language:
 ```bash
-uv run cowork-shield anonymize <file> --language he
-uv run cowork-shield shield-clipboard --language he
+uv run cloakroom anonymize <file> --language he
+uv run cloakroom shield-clipboard --language he
 ```
 
 If you selected `--hebrew-backend stanza`:
@@ -227,7 +227,7 @@ uv sync --extra hebrew_advanced
 
 To use the specialized Golem model explicitly:
 ```bash
-uv run cowork-shield anonymize <file> --language he --hebrew-backend transformers --hebrew-transformer-model CordwainerSmith/GolemPII-v1
+uv run cloakroom anonymize <file> --language he --hebrew-backend transformers --hebrew-transformer-model CordwainerSmith/GolemPII-v1
 ```
 
 ## 9) Environment Repair
@@ -245,25 +245,25 @@ uv sync --extra dev
 If workspace state is suspected stale or over-retained:
 ```bash
 # Create explicit encrypted backup snapshot
-uv run cowork-shield workspace close <workspace>
+uv run cloakroom workspace close <workspace>
 
 # Recover from a snapshot
-uv run cowork-shield workspace recover --workspace <workspace> ~/.safeai/backups/<workspace_id>/vault-<timestamp>.enc
+uv run cloakroom workspace recover --workspace <workspace> ~/.cloakroom/backups/<workspace_id>/vault-<timestamp>.enc
 
 # Purge mappings (creates mandatory backup first)
-uv run cowork-shield workspace purge <workspace> --yes
+uv run cloakroom workspace purge <workspace> --yes
 ```
 
 If restore should clear mappings immediately after success:
 ```bash
-uv run cowork-shield workspace set-governance <workspace> --self-destruct-on-restore
+uv run cloakroom workspace set-governance <workspace> --self-destruct-on-restore
 ```
 
 ## 11) Performance Regression Checks
 Run current benchmark:
 ```bash
-uv run cowork-shield benchmark-performance --rows 10000 --language en --output ./perf-en.json
-uv run cowork-shield benchmark-performance --rows 10000 --language he --output ./perf-he.json
+uv run cloakroom benchmark-performance --rows 10000 --language en --output ./perf-en.json
+uv run cloakroom benchmark-performance --rows 10000 --language he --output ./perf-he.json
 ```
 
 v11 targets:

@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from cowork_shield.detection.engine import DetectionEngine
-from cowork_shield.exceptions import ColumnSelectionError
-from cowork_shield.handlers.csv_handler import CsvHandler
-from cowork_shield.tokenizer.generator import TokenGenerator
+from cloakroom.detection.engine import DetectionEngine
+from cloakroom.exceptions import ColumnSelectionError
+from cloakroom.handlers.csv_handler import CsvHandler
+from cloakroom.tokenizer.generator import TokenGenerator
 
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
 

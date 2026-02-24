@@ -1,14 +1,14 @@
-# CoWork Shield — Project Handoff Document
+# Cloakroom — Project Handoff Document
 
 **Version**: 0.2.0
 **Date**: February 22, 2026
-**Repo**: https://github.com/GreggBerretta/cowork-shield (private)
+**Repo**: https://github.com/GreggBerretta/cloakroom (private)
 
 ---
 
 ## What Is This?
 
-CoWork Shield is a reversible document anonymization tool. It replaces personally identifiable information (PII) in documents with deterministic tokens (e.g., "John Smith" becomes `PERSON_00001`), lets you safely send the anonymized document through an LLM, then restores the original values afterward.
+Cloakroom is a reversible document anonymization tool. It replaces personally identifiable information (PII) in documents with deterministic tokens (e.g., "John Smith" becomes `PERSON_00001`), lets you safely send the anonymized document through an LLM, then restores the original values afterward.
 
 Key guarantees:
 - **Deterministic**: Same person always gets the same token within a workspace
@@ -33,7 +33,7 @@ Key guarantees:
 ## Project Structure
 
 ```
-src/cowork_shield/
+src/cloakroom/
   __init__.py              # Version 0.2.0
   cli.py                   # Click CLI (anonymize, restore, workspace commands)
   models.py                # All dataclasses (VaultData v2.0, Token, EntityMapping, etc.)
@@ -165,7 +165,7 @@ Laying groundwork for Phase 2 features:
 
 **Goal**: Workspace close with encrypted backup, recovery from backup, and PII-free audit export.
 
-- **Backup**: Copy encrypted vault to `~/.safeai/backups/<workspace_id>/` with non-PII metadata.
+- **Backup**: Copy encrypted vault to `~/.cloakroom/backups/<workspace_id>/` with non-PII metadata.
 - **Recovery**: Load vault from backup directory using Keychain key (key must still be present).
 - **Audit export**: Generate JSON or CSV summary with operation counts, attestation events, and file records — no PII included. New CLI commands: `workspace close`, `workspace recover`, `workspace export --audit-summary`.
 
@@ -178,7 +178,7 @@ Laying groundwork for Phase 2 features:
 - **Protocol**: `IPCRequest`/`IPCResponse` dataclasses with JSON-line serialization.
 - **Command registry**: Decorator-based handler registration. Initial commands: `shield_clipboard`, `restore_clipboard`, `list_workspaces`, `workspace_stats`.
 - **Server loop**: Reads from stdin, dispatches commands, writes responses to stdout. Signals readiness on startup.
-- **Entry point**: New `cowork-shield-ipc` script in pyproject.toml.
+- **Entry point**: New `cloakroom-ipc` script in pyproject.toml.
 
 **New files**: `ipc/protocol.py`, `ipc/commands.py`, `ipc/server.py`.
 
@@ -192,7 +192,7 @@ Laying groundwork for Phase 2 features:
 - **Review dialog**: SwiftUI popover showing detected entities for attestation before anonymization.
 - **Packaging**: PyInstaller bundles the Python engine into a standalone binary. Swift app looks for it in the app bundle, `~/.local/bin/`, or falls back to `python3 -m`.
 
-**New directory**: `CoWorkShieldMenuBar/` (Xcode project, separate from the Python source).
+**New directory**: `CloakroomMenuBar/` (Xcode project, separate from the Python source).
 
 ### Sprint 9 — Performance Benchmarks & LLM Mutation Testing (~1 week)
 
@@ -227,8 +227,8 @@ Sprints 2-7 are pure Python and can be done by anyone comfortable with the exist
 
 ```bash
 # Clone and set up
-git clone https://github.com/GreggBerretta/cowork-shield.git
-cd cowork-shield
+git clone https://github.com/GreggBerretta/cloakroom.git
+cd cloakroom
 uv sync
 
 # Download the spaCy model (required for PII detection)
@@ -238,9 +238,9 @@ uv run python -m spacy download en_core_web_lg
 uv run pytest
 
 # Try the CLI
-uv run cowork-shield anonymize path/to/file.csv -w my-workspace
-uv run cowork-shield restore path/to/file.anonymized.csv -w my-workspace
-uv run cowork-shield workspace list
+uv run cloakroom anonymize path/to/file.csv -w my-workspace
+uv run cloakroom restore path/to/file.anonymized.csv -w my-workspace
+uv run cloakroom workspace list
 ```
 
 ---

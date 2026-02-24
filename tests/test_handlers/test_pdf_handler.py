@@ -6,11 +6,11 @@ import os
 
 import pytest
 
-from cowork_shield.exceptions import CoWorkShieldError, PdfInputOnlyError
-from cowork_shield.extractors.pdf_markdown import PDFExtractionResult
-from cowork_shield.handlers.pdf_handler import PdfHandler
-from cowork_shield.models import DetectedEntity, EntityType
-from cowork_shield.tokenizer.generator import TokenGenerator
+from cloakroom.exceptions import CloakroomError, PdfInputOnlyError
+from cloakroom.extractors.pdf_markdown import PDFExtractionResult
+from cloakroom.handlers.pdf_handler import PdfHandler
+from cloakroom.models import DetectedEntity, EntityType
+from cloakroom.tokenizer.generator import TokenGenerator
 
 
 class FakeDetectionEngine:
@@ -106,7 +106,7 @@ class TestPdfHandler:
         input_path.write_bytes(b"%PDF-1.4\n")
         output_path = tmp_path / "output.pdf"
 
-        with pytest.raises(CoWorkShieldError, match="must be .md or .docx"):
+        with pytest.raises(CloakroomError, match="must be .md or .docx"):
             handler.anonymize(
                 input_path,
                 output_path,

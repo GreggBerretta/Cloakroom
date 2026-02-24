@@ -6,9 +6,9 @@ import json
 
 import pytest
 
-from cowork_shield.exceptions import RecoveryKeyError
-from cowork_shield.vault.crypto import generate_master_key
-from cowork_shield.vault.recovery import (
+from cloakroom.exceptions import RecoveryKeyError
+from cloakroom.vault.crypto import generate_master_key
+from cloakroom.vault.recovery import (
     export_encrypted_master_key,
     import_encrypted_master_key,
 )

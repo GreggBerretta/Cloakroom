@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from cowork_shield.vault.migration import (
+from cloakroom.vault.migration import (
     CURRENT_VAULT_VERSION,
     migrate_vault_data,
 )

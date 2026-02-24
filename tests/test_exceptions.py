@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from cowork_shield.exceptions import (
+from cloakroom.exceptions import (
     AttestationAbortedError,
     BackupError,
-    CoWorkShieldError,
+    CloakroomError,
     HallucinationDetectedError,
     IPCError,
     ModelHashMismatchError,
@@ -15,13 +15,13 @@ from cowork_shield.exceptions import (
 
 class TestExceptionHierarchy:
     def test_all_inherit_from_base(self):
-        """All custom exceptions should inherit from CoWorkShieldError."""
-        assert issubclass(HallucinationDetectedError, CoWorkShieldError)
-        assert issubclass(AttestationAbortedError, CoWorkShieldError)
-        assert issubclass(BackupError, CoWorkShieldError)
-        assert issubclass(ModelHashMismatchError, CoWorkShieldError)
-        assert issubclass(RecoveryKeyError, CoWorkShieldError)
-        assert issubclass(IPCError, CoWorkShieldError)
+        """All custom exceptions should inherit from CloakroomError."""
+        assert issubclass(HallucinationDetectedError, CloakroomError)
+        assert issubclass(AttestationAbortedError, CloakroomError)
+        assert issubclass(BackupError, CloakroomError)
+        assert issubclass(ModelHashMismatchError, CloakroomError)
+        assert issubclass(RecoveryKeyError, CloakroomError)
+        assert issubclass(IPCError, CloakroomError)
 
 
 class TestHallucinationDetectedError:

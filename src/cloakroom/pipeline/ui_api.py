@@ -1,0 +1,389 @@
+"""Shared UI-facing API wrappers for TUI and Gradio frontends."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+import html
+from pathlib import Path
+
+from cloakroom.detection.engine import DetectionEngine
+from cloakroom.exceptions import (
+    ColumnSelectionError,
+    DetectionError,
+    HallucinationDetectedError,
+    IncompleteRestorationError,
+    IntegrityError,
+    KeychainError,
+    LicenseFeatureError,
+    LicenseKeyInvalidError,
+    LicenseLimitExceededError,
+    ModelHashMismatchError,
+    PdfExtractionError,
+    PdfInputOnlyError,
+    ReplayMismatchError,
+    UnsupportedFormatError,
+    WorkspaceExpiredError,
+    WorkspaceNotFoundError,
+    XLSXContentLossRiskError,
+)
+from cloakroom.licensing import (
+    DEFAULT_PRICING_URL,
+    FREE_MAX_TTL_HOURS,
+    enforce_license_policy,
+    resolve_license_context,
+)
+from cloakroom.pipeline.anonymize import AnonymizePipeline
+from cloakroom.pipeline.columns import inspect_columns
+from cloakroom.pipeline.restore import RestorePipeline
+from cloakroom.workspace.manager import WorkspaceManager
+
+
+@dataclass(frozen=True)
+class UIOperationResult:
+    """Result payload returned to UI frontends."""
+
+    path: str
+    summary: str
+    entity_rows: list[dict[str, str]]
+    entity_table_html: str
+
+
+def sanitize_ui_error(exc: Exception) -> tuple[str, str]:
+    """Return a stable, non-sensitive UI-safe error code/message pair."""
+    code = exc.__class__.__name__
+
+    if isinstance(exc, UnsupportedFormatError):
+        return code, "Unsupported format. Use PDF, CSV, XLSX, DOCX, TXT, or MD."
+    if isinstance(exc, ColumnSelectionError):
+        return code, str(exc)
+    if isinstance(exc, PdfExtractionError):
+        return code, "PDF extraction failed. Install Docling or PyMuPDF and retry."
+    if isinstance(exc, PdfInputOnlyError):
+        return (
+            code,
+            "PDF is input-only. Restore from tokenized Markdown (.md) or DOCX (.docx).",
+        )
+    if isinstance(exc, DetectionError):
+        return code, "PII detection failed. Verify language model installation and retry."
+    if isinstance(exc, WorkspaceNotFoundError):
+        return code, "Workspace not found. Select an existing workspace."
+    if isinstance(exc, WorkspaceExpiredError):
+        return code, "Workspace expired. Create a new workspace and retry."
+    if isinstance(exc, XLSXContentLossRiskError):
+        return (
+            code,
+            "XLSX includes charts/images that may be dropped. Enable lossy XLSX only with explicit confirmation.",
+        )
+    if isinstance(exc, ModelHashMismatchError):
+        return code, "Model hash mismatch. Deterministic safeguards blocked this operation."
+    if isinstance(exc, ReplayMismatchError):
+        return code, "Deterministic replay mismatch detected. Operation aborted."
+    if isinstance(exc, HallucinationDetectedError):
+        return code, "Potential AI mutation detected. Restore aborted."
+    if isinstance(exc, IntegrityError):
+        return code, "Vault integrity verification failed. Restore aborted."
+    if isinstance(exc, IncompleteRestorationError):
+        return code, "Restore incomplete. Unresolved tokens remain in output."
+    if isinstance(exc, KeychainError):
+        return code, "Keychain operation failed. Verify Keychain access and retry."
+    if isinstance(exc, LicenseKeyInvalidError):
+        return code, f"Invalid license key. Verify the key and retry. Upgrade: {DEFAULT_PRICING_URL}"
+    if isinstance(exc, LicenseFeatureError):
+        return code, f"This operation requires a Pro license tier. Upgrade: {DEFAULT_PRICING_URL}"
+    if isinstance(exc, LicenseLimitExceededError):
+        return code, f"Free-tier restore limit reached for today. Upgrade: {DEFAULT_PRICING_URL}"
+    if isinstance(exc, OSError):
+        return code, "Filesystem operation failed. Verify path permissions and free disk space."
+    return code, "Operation failed. See logs for details."
+
+
+def get_workspaces() -> list[str]:
+    """Return known workspace names for UI selectors."""
+    mgr = WorkspaceManager()
+    names = [ws["name"] for ws in mgr.list_workspaces()]
+    if "default" not in names:
+        names.insert(0, "default")
+    return sorted(set(names), key=lambda n: (n != "default", n.lower()))
+
+
+def preview_entities(
+    file_path: str | Path,
+    *,
+    score_threshold: float = 0.7,
+    language: str = "auto",
+    max_rows: int = 200,
+) -> list[dict[str, str]]:
+    """Detect and return entity rows for attestation/review."""
+    path = Path(file_path).expanduser().resolve()
+    text = _read_supported_text(path)
+    detection = DetectionEngine(score_threshold=score_threshold)
+    entities = detection.detect(text, language=language)
+
+    rows: list[dict[str, str]] = []
+    for entity in entities[:max_rows]:
+        rows.append(
+            {
+                "type": entity.entity_type.value,
+                "text": entity.text,
+                "start": str(entity.start),
+                "end": str(entity.end),
+                "score": f"{entity.score:.3f}",
+            }
+        )
+    return rows
+
+
+def anonymize_file(
+    file_path: str | Path,
+    workspace: str,
+    *,
+    output_path: str | Path | None = None,
+    ttl_hours: int = FREE_MAX_TTL_HOURS,
+    score_threshold: float = 0.7,
+    detection_mode: str = "balanced",
+    language: str = "auto",
+    allow_lossy_xlsx: bool = False,
+    pdf_output_format: str = "md",
+    columns: str | list[str] | None = None,
+    detect_pii: bool | None = None,
+    force_reanonymize: bool = False,
+    reason: str = "",
+    license_key: str = "",
+) -> UIOperationResult:
+    """Run anonymization and return UI-friendly payload."""
+    usage_workspace = _enforce_ui_license(
+        request_type="WORKSPACE_SWITCH",
+        payload={"ttl_hours": ttl_hours},
+        license_key=license_key,
+    )
+    _enforce_ui_license(
+        request_type="ANONYMIZE_FILE",
+        payload={
+            "columns": columns or [],
+            "hebrew_backend": "auto",
+            "detect_pii": bool(detect_pii),
+            "ttl_hours": ttl_hours,
+        },
+        license_key=license_key,
+    )
+
+    mgr = WorkspaceManager()
+    workspace_created = False
+    try:
+        mgr.get_workspace_metadata(workspace)
+    except WorkspaceNotFoundError:
+        workspace_created = True
+    ctx = mgr.get_or_create_workspace(workspace, ttl_hours=ttl_hours)
+
+    input_path = Path(file_path).expanduser().resolve()
+    out_path = Path(output_path).expanduser().resolve() if output_path else None
+    selected_columns = _normalize_columns(columns)
+    effective_detect_pii = detect_pii if detect_pii is not None else (not bool(selected_columns))
+
+    entity_rows: list[dict[str, str]] = []
+    if effective_detect_pii:
+        entity_rows = preview_entities(
+            input_path,
+            score_threshold=score_threshold,
+            language=language,
+        )
+
+    pipeline = AnonymizePipeline(
+        ctx,
+        score_threshold=score_threshold,
+        detection_mode=detection_mode,
+        language=language,
+        force_reanonymize=force_reanonymize,
+        override_reason=reason,
+        override_user="ui",
+        allow_lossy_xlsx=allow_lossy_xlsx,
+        pdf_output_format=pdf_output_format,
+        selected_columns=selected_columns,
+        detect_pii=detect_pii,
+    )
+    result = pipeline.run(input_path, out_path)
+
+    summary = (
+        f"Anonymized {result.input_path.name} -> {result.output_path.name}. "
+        f"Entities: {result.entities_found}. Tokens: {result.tokens_applied}."
+    )
+    if input_path.suffix.lower() == ".pdf":
+        summary += (
+            " PDF is input-only: output is extracted Markdown/DOCX; "
+            "the original PDF binary is not reconstructed."
+        )
+    if selected_columns:
+        summary += f" Columns: {', '.join(selected_columns)}."
+        if not effective_detect_pii:
+            summary += " Detection: column-only."
+    if workspace_created:
+        summary += (
+            " New workspace created. Export recovery key to avoid unrecoverable key-loss:"
+            f" cloakroom workspace export-key --workspace {workspace} --output ~/.cloakroom/recovery/{workspace}.recovery.key."
+        )
+    if usage_workspace.get("tier") == "FREE":
+        limit = int(usage_workspace.get("free_daily_restore_limit", 5))
+        used = int(usage_workspace.get("free_daily_restores_used", 0))
+        remaining = int(usage_workspace.get("free_daily_restores_remaining", max(0, limit - used)))
+        summary += f" Free tier restore quota: {used}/{limit} used today ({remaining} remaining)."
+    return UIOperationResult(
+        path=str(result.output_path),
+        summary=summary,
+        entity_rows=entity_rows,
+        entity_table_html=render_entity_table(entity_rows),
+    )
+
+
+def restore_file(
+    file_path: str | Path,
+    workspace: str,
+    *,
+    output_path: str | Path | None = None,
+    license_key: str = "",
+) -> UIOperationResult:
+    """Run restoration and return UI-friendly payload."""
+    usage = _enforce_ui_license(
+        request_type="RESTORE_FILE",
+        payload={},
+        license_key=license_key,
+    )
+
+    mgr = WorkspaceManager()
+    ctx = mgr.get_active_workspace(workspace)
+
+    input_path = Path(file_path).expanduser().resolve()
+    out_path = Path(output_path).expanduser().resolve() if output_path else None
+    pipeline = RestorePipeline(ctx)
+    result = pipeline.run(input_path, out_path)
+
+    summary = (
+        f"Restored {result.input_path.name} -> {result.output_path.name}. "
+        f"Tokens restored: {result.tokens_restored}."
+    )
+    if usage.get("tier") == "FREE":
+        limit = int(usage.get("free_daily_restore_limit", 5))
+        used = int(usage.get("free_daily_restores_used", 0))
+        remaining = int(usage.get("free_daily_restores_remaining", max(0, limit - used)))
+        summary += f" Free tier restore quota: {used}/{limit} used today ({remaining} remaining)."
+    return UIOperationResult(
+        path=str(result.output_path),
+        summary=summary,
+        entity_rows=[],
+        entity_table_html=render_entity_table([]),
+    )
+
+
+def render_entity_table(rows: list[dict[str, str]]) -> str:
+    """Render an HTML table for entity attestation in web UI."""
+    if not rows:
+        return "<p><strong>No entities detected.</strong></p>"
+
+    header = (
+        "<thead><tr>"
+        "<th>Type</th><th>Text</th><th>Start</th><th>End</th><th>Score</th>"
+        "</tr></thead>"
+    )
+    body_rows = []
+    for row in rows:
+        body_rows.append(
+            "<tr>"
+            f"<td>{html.escape(row['type'])}</td>"
+            f"<td>{html.escape(row['text'])}</td>"
+            f"<td>{html.escape(row['start'])}</td>"
+            f"<td>{html.escape(row['end'])}</td>"
+            f"<td>{html.escape(row['score'])}</td>"
+            "</tr>"
+        )
+    body = "<tbody>" + "".join(body_rows) + "</tbody>"
+    return (
+        "<table border='1' cellpadding='6' cellspacing='0' style='border-collapse:collapse;'>"
+        + header
+        + body
+        + "</table>"
+    )
+
+
+def _read_supported_text(path: Path) -> str:
+    suffix = path.suffix.lower()
+    if suffix == ".txt":
+        return path.read_text(encoding="utf-8", errors="replace")
+    if suffix == ".md":
+        return path.read_text(encoding="utf-8", errors="replace")
+    if suffix == ".csv":
+        return path.read_text(encoding="utf-8-sig", errors="replace")
+    if suffix == ".pdf":
+        from cloakroom.extractors.pdf_markdown import extract_pdf_to_markdown
+
+        return extract_pdf_to_markdown(path)
+    if suffix == ".docx":
+        from docx import Document
+
+        doc = Document(str(path))
+        parts = [para.text for para in doc.paragraphs]
+        for table in doc.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    parts.append(cell.text)
+        return "\n".join(parts)
+    if suffix == ".xlsx":
+        from openpyxl import load_workbook
+
+        wb = load_workbook(str(path), data_only=False, read_only=True)
+        parts: list[str] = []
+        for ws in wb.worksheets:
+            for row in ws.iter_rows():
+                for cell in row:
+                    if cell.value is not None:
+                        parts.append(str(cell.value))
+        wb.close()
+        return "\n".join(parts)
+
+    raise UnsupportedFormatError(suffix)
+
+
+def get_file_columns(file_path: str | Path) -> list[dict[str, str]]:
+    """Return column metadata for CSV/XLSX selection UIs."""
+    columns = inspect_columns(file_path)
+    return [
+        {
+            "index": str(column.index),
+            "letter": column.letter,
+            "name": column.name,
+            "data_type": column.data_type,
+            "sample": " | ".join(column.sample_values),
+            "label": (
+                f"{column.letter}: {column.name} [{column.data_type}]"
+                + (
+                    f" (e.g. {' | '.join(column.sample_values)})"
+                    if column.sample_values
+                    else ""
+                )
+            ),
+        }
+        for column in columns
+    ]
+
+
+def _normalize_columns(columns: str | list[str] | None) -> list[str]:
+    if columns is None:
+        return []
+    if isinstance(columns, str):
+        return [part.strip() for part in columns.split(",") if part.strip()]
+    return [str(part).strip() for part in columns if str(part).strip()]
+
+
+def _enforce_ui_license(
+    *,
+    request_type: str,
+    payload: dict[str, object],
+    license_key: str,
+) -> dict:
+    merged = dict(payload)
+    if license_key.strip():
+        merged["license_key"] = license_key.strip()
+    context = resolve_license_context(merged)
+    return enforce_license_policy(
+        request_type=request_type,
+        payload=merged,
+        license_context=context,
+    )

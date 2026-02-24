@@ -1,4 +1,4 @@
-# HANDOFF_B Implementation Status (Fork)
+# HANDOFF_B Implementation Status
 
 ## Baseline
 This status is explicitly based on `HANDOFF_B.md` (lean internal validation scope), then extended with v11 launch-prep controls implemented in this branch.
@@ -21,7 +21,7 @@ This status is explicitly based on `HANDOFF_B.md` (lean internal validation scop
 - Hebrew support pathways
 - spreadsheet column-selective anonymization
 
-## Added Beyond Baseline (v11 Launch-Prep in Fork)
+## Added Beyond Baseline (v11 Launch-Prep)
 - Free TTL fixed to 24h, Pro TTL up to 30 days
 - auditable license checks wired through CLI/UI/IPC
 - workspace close/recover/purge governance commands
@@ -32,7 +32,7 @@ This status is explicitly based on `HANDOFF_B.md` (lean internal validation scop
 
 ## Validation
 - `uv run pytest -q` -> 297 passed
-- `swift build` in `wrapper/CoWorkShieldWrapper` -> pass
+- `swift build` in `wrapper/CloakroomWrapper` -> pass
 - `swift run wrapper-invariant-checks` -> pass
 
 ## Performance Reality vs Target

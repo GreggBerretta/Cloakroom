@@ -35,7 +35,7 @@ jobs:
 
       - name: Run launch performance gate
         run: |
-          uv run cowork-shield benchmark-performance --rows 10000 --language en --enforce-gates --output performance-gate.json
+          uv run cloakroom benchmark-performance --rows 10000 --language en --enforce-gates --output performance-gate.json
 
       - name: Upload benchmark artifact
         uses: actions/upload-artifact@v4

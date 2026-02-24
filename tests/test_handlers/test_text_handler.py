@@ -3,9 +3,9 @@
 import os
 from pathlib import Path
 
-from cowork_shield.models import DetectedEntity, EntityType
-from cowork_shield.handlers.text_handler import TextHandler
-from cowork_shield.tokenizer.generator import TokenGenerator
+from cloakroom.models import DetectedEntity, EntityType
+from cloakroom.handlers.text_handler import TextHandler
+from cloakroom.tokenizer.generator import TokenGenerator
 
 
 class FakeDetectionEngine:

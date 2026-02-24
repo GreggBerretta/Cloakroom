@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from cowork_shield.exceptions import IncompleteRestorationError
-from cowork_shield.ui import gradio_app
+from cloakroom.exceptions import IncompleteRestorationError
+from cloakroom.ui import gradio_app
 
 
 class TestGradioShieldGuardrails:

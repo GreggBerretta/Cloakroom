@@ -39,4 +39,4 @@ uv.lock
 
 # SwiftPM
 .build/
-wrapper/CoWorkShieldWrapper/.build/
+wrapper/CloakroomWrapper/.build/

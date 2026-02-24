@@ -6,13 +6,13 @@ import subprocess
 
 import pytest
 
-from cowork_shield.clipboard import operations
-from cowork_shield.exceptions import HallucinationDetectedError
-from cowork_shield.models import DetectedEntity, EntityType, FileRecord, VaultData, now_iso
-from cowork_shield.tokenizer.generator import TokenGenerator
-from cowork_shield.vault.crypto import derive_hmac_key, generate_master_key
-from cowork_shield.vault.vault import Vault
-from cowork_shield.workspace.manager import WorkspaceContext
+from cloakroom.clipboard import operations
+from cloakroom.exceptions import HallucinationDetectedError
+from cloakroom.models import DetectedEntity, EntityType, FileRecord, VaultData, now_iso
+from cloakroom.tokenizer.generator import TokenGenerator
+from cloakroom.vault.crypto import derive_hmac_key, generate_master_key
+from cloakroom.vault.vault import Vault
+from cloakroom.workspace.manager import WorkspaceContext
 
 
 class FakeDetectionEngine:

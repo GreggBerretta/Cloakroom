@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from cowork_shield.exceptions import IPCError
-from cowork_shield.ipc.protocol import (
+from cloakroom.exceptions import IPCError
+from cloakroom.ipc.protocol import (
     IPCRequest,
     IPCResponse,
     IPCStatus,

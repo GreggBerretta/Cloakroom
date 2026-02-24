@@ -7,8 +7,8 @@ from io import BytesIO
 
 import pytest
 
-from cowork_shield.exceptions import IPCError
-from cowork_shield.ipc.framing import (
+from cloakroom.exceptions import IPCError
+from cloakroom.ipc.framing import (
     recv_frame,
     recv_frame_stream,
     send_frame,

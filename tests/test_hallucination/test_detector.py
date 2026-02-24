@@ -1,6 +1,6 @@
 """Tests for hallucination/mutation token detection."""
 
-from cowork_shield.hallucination.detector import detect_token_anomalies
+from cloakroom.hallucination.detector import detect_token_anomalies
 
 
 class TestDetectTokenAnomalies:

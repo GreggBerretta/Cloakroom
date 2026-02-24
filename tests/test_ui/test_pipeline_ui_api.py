@@ -5,9 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-from cowork_shield.pipeline import get_workspaces, render_entity_table
-from cowork_shield.pipeline import ui_api
-from cowork_shield.exceptions import IncompleteRestorationError
+from cloakroom.pipeline import get_workspaces, render_entity_table
+from cloakroom.pipeline import ui_api
+from cloakroom.exceptions import IncompleteRestorationError
 
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
 

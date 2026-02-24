@@ -3,9 +3,9 @@
 import os
 import unicodedata
 
-from cowork_shield.models import DetectedEntity, EntityType
-from cowork_shield.tokenizer.generator import TokenGenerator
-from cowork_shield.tokenizer.replacer import TextReplacer
+from cloakroom.models import DetectedEntity, EntityType
+from cloakroom.tokenizer.generator import TokenGenerator
+from cloakroom.tokenizer.replacer import TextReplacer
 
 
 class TestReplaceEntities:

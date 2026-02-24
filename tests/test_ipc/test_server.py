@@ -6,14 +6,14 @@ from pathlib import Path
 
 import pytest
 
-from cowork_shield import licensing
-from cowork_shield.ipc.protocol import PROTOCOL_VERSION
-from cowork_shield.ipc.server import IPCServer
-from cowork_shield.models import VaultData, now_iso
-from cowork_shield.tokenizer.generator import TokenGenerator
-from cowork_shield.vault.crypto import derive_hmac_key, generate_master_key
-from cowork_shield.vault.vault import Vault
-from cowork_shield.workspace.manager import WorkspaceContext
+from cloakroom import licensing
+from cloakroom.ipc.protocol import PROTOCOL_VERSION
+from cloakroom.ipc.server import IPCServer
+from cloakroom.models import VaultData, now_iso
+from cloakroom.tokenizer.generator import TokenGenerator
+from cloakroom.vault.crypto import derive_hmac_key, generate_master_key
+from cloakroom.vault.vault import Vault
+from cloakroom.workspace.manager import WorkspaceContext
 
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
 

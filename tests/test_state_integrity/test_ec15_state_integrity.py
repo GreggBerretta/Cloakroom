@@ -13,14 +13,14 @@ import time
 
 import pytest
 
-from cowork_shield.clipboard import operations as clipboard_ops
-from cowork_shield.exceptions import (
+from cloakroom.clipboard import operations as clipboard_ops
+from cloakroom.exceptions import (
     HallucinationDetectedError,
     IncompleteRestorationError,
     IntegrityError,
     WorkspaceExpiredError,
 )
-from cowork_shield.models import (
+from cloakroom.models import (
     DetectedEntity,
     EntityMapping,
     EntityType,
@@ -28,16 +28,16 @@ from cowork_shield.models import (
     VaultData,
     now_iso,
 )
-from cowork_shield.logging import append_audit_event
-from cowork_shield.logging import config as log_config
-from cowork_shield.logging.audit import read_audit_events
-from cowork_shield.logging.config import configure_logging, log_event
-from cowork_shield.pipeline.anonymize import AnonymizePipeline
-from cowork_shield.pipeline.restore import RestorePipeline
-from cowork_shield.tokenizer.generator import TokenGenerator
-from cowork_shield.vault.crypto import derive_hmac_key, generate_master_key
-from cowork_shield.vault.vault import Vault
-from cowork_shield.workspace.manager import WorkspaceContext
+from cloakroom.logging import append_audit_event
+from cloakroom.logging import config as log_config
+from cloakroom.logging.audit import read_audit_events
+from cloakroom.logging.config import configure_logging, log_event
+from cloakroom.pipeline.anonymize import AnonymizePipeline
+from cloakroom.pipeline.restore import RestorePipeline
+from cloakroom.tokenizer.generator import TokenGenerator
+from cloakroom.vault.crypto import derive_hmac_key, generate_master_key
+from cloakroom.vault.vault import Vault
+from cloakroom.workspace.manager import WorkspaceContext
 
 
 class FakeDetectionEngine:
@@ -154,7 +154,7 @@ class TestEC15CrashConsistency:
         def crash_rename(_src, _dst):
             raise RuntimeError("simulated SIGKILL before commit rename")
 
-        monkeypatch.setattr("cowork_shield.pipeline.restore.os.rename", crash_rename)
+        monkeypatch.setattr("cloakroom.pipeline.restore.os.rename", crash_rename)
 
         pipeline = RestorePipeline(workspace_ctx)
         with pytest.raises(RuntimeError, match="simulated SIGKILL"):
@@ -176,7 +176,7 @@ class TestEC15CrashConsistency:
         def crash_atomic_write(_path, _data):
             raise OSError("simulated kill during atomic write")
 
-        monkeypatch.setattr("cowork_shield.vault.vault.atomic_write", crash_atomic_write)
+        monkeypatch.setattr("cloakroom.vault.vault.atomic_write", crash_atomic_write)
 
         with pytest.raises(OSError, match="simulated kill"):
             workspace_ctx.vault.save(workspace_ctx.vault_data, workspace_ctx.master_key)
@@ -388,7 +388,7 @@ class TestEC15EnvironmentEdges:
             temp_path.write_text("partial", encoding="utf-8")
             raise RuntimeError("simulated sleep/wake interruption")
 
-        monkeypatch.setattr("cowork_shield.handlers.text_handler.TextHandler.restore", interrupted_restore)
+        monkeypatch.setattr("cloakroom.handlers.text_handler.TextHandler.restore", interrupted_restore)
 
         with pytest.raises(RuntimeError, match="sleep/wake"):
             RestorePipeline(workspace_ctx).run(anonymized_path, restore_path)
@@ -439,7 +439,7 @@ class TestEC15LogIntegrity:
     def _isolate_logs(self, tmp_path, monkeypatch):
         log_dir = tmp_path / "logs"
         monkeypatch.setattr(log_config, "LOG_DIR", log_dir)
-        monkeypatch.setattr(log_config, "LOG_FILE", log_dir / "cowork_shield.log")
+        monkeypatch.setattr(log_config, "LOG_FILE", log_dir / "cloakroom.log")
         monkeypatch.setattr(log_config, "LOG_KEY_FILE", log_dir / ".logkey")
         return log_dir
 
@@ -454,7 +454,7 @@ class TestEC15LogIntegrity:
     def test_t_log_002_log_rotation_retention(self, tmp_path, monkeypatch):
         log_dir = self._isolate_logs(tmp_path, monkeypatch)
         log_dir.mkdir(parents=True, exist_ok=True)
-        stale = log_dir / "cowork_shield.log.4"
+        stale = log_dir / "cloakroom.log.4"
         stale.write_text("{}", encoding="utf-8")
         stale_time = time.time() - (31 * 24 * 3600)
         os.utime(stale, (stale_time, stale_time))

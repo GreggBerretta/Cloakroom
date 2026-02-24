@@ -8,9 +8,9 @@ from types import SimpleNamespace
 import pytest
 from click.testing import CliRunner
 
-from cowork_shield.cli import main
-from cowork_shield import cli as cli_module
-from cowork_shield.logging import config as log_config
+from cloakroom.cli import main
+from cloakroom import cli as cli_module
+from cloakroom.logging import config as log_config
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
@@ -117,7 +117,7 @@ class TestCli:
     def test_logs_export_and_delete(self, runner, tmp_path, monkeypatch):
         log_dir = tmp_path / "logs"
         monkeypatch.setattr(log_config, "LOG_DIR", log_dir)
-        monkeypatch.setattr(log_config, "LOG_FILE", log_dir / "cowork_shield.log")
+        monkeypatch.setattr(log_config, "LOG_FILE", log_dir / "cloakroom.log")
         monkeypatch.setattr(log_config, "LOG_KEY_FILE", log_dir / ".logkey")
 
         export_path = tmp_path / "support-export.json"

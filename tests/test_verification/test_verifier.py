@@ -4,9 +4,9 @@ import os
 
 import pytest
 
-from cowork_shield.models import EntityMapping, EntityType, Token
-from cowork_shield.tokenizer.generator import TokenGenerator
-from cowork_shield.verification.verifier import IntegrityVerifier, compute_sha256
+from cloakroom.models import EntityMapping, EntityType, Token
+from cloakroom.tokenizer.generator import TokenGenerator
+from cloakroom.verification.verifier import IntegrityVerifier, compute_sha256
 
 
 @pytest.fixture

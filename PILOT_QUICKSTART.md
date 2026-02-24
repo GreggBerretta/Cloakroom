@@ -1,4 +1,4 @@
-# CoWork Shield Pilot Quickstart (One Page)
+# Cloakroom Pilot Quickstart (One Page)
 
 Use this for pilot onboarding and daily operation.
 
@@ -12,34 +12,34 @@ uv run python -m spacy download he_core_news_sm || uv run python -m spacy downlo
 
 ## 2) Mandatory First Run
 ```bash
-uv run cowork-shield onboarding --workspace default
+uv run cloakroom onboarding --workspace default
 ```
 This step creates workspace state and exports encrypted recovery key.
 
 ## 3) Safety Checks (Pilot Blockers)
 ```bash
-uv run cowork-shield workspace verify-security
+uv run cloakroom workspace verify-security
 # Optional raw fallback check (canonical vault path)
-stat -f "%Sp %N" ~/.cowork-shield/workspaces/*/vault.enc
+stat -f "%Sp %N" ~/.cloakroom/workspaces/*/vault.enc
 uv run pytest -q tests/test_state_integrity/test_ec15_state_integrity.py
 ```
 
 ## 4) Core Workflow
 ```bash
 # anonymize file
-uv run cowork-shield anonymize ./client_notes.txt -w client-a
+uv run cloakroom anonymize ./client_notes.txt -w client-a
 
 # run through LLM externally (tokenized content only)
 
 # restore output
-uv run cowork-shield restore ./client_notes.anonymized.txt -w client-a
+uv run cloakroom restore ./client_notes.anonymized.txt -w client-a
 ```
 
 ## 5) Spreadsheet Column-Selective Mode
 ```bash
-uv run cowork-shield inspect-columns ./deals.xlsx
-uv run cowork-shield anonymize ./deals.xlsx -w client-a --columns "Deal ID,Client Name"
-uv run cowork-shield anonymize ./deals.xlsx -w client-a --columns "Deal ID,Client Name" --detect-pii
+uv run cloakroom inspect-columns ./deals.xlsx
+uv run cloakroom anonymize ./deals.xlsx -w client-a --columns "Deal ID,Client Name"
+uv run cloakroom anonymize ./deals.xlsx -w client-a --columns "Deal ID,Client Name" --detect-pii
 ```
 
 ## 6) Critical Warnings
@@ -50,6 +50,6 @@ uv run cowork-shield anonymize ./deals.xlsx -w client-a --columns "Deal ID,Clien
 
 ## 7) Get Support
 ```bash
-uv run cowork-shield logs export --workspace client-a --output ./support-logs.json
+uv run cloakroom logs export --workspace client-a --output ./support-logs.json
 ```
 Share only sanitized export via the internal support channel.

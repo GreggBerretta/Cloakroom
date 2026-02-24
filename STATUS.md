@@ -1,15 +1,15 @@
-# CoWork Shield Fork Status Report
+# Cloakroom Status Report
 
 ## Snapshot
 - Date: 2026-02-24
-- Repo: `GreggBerretta/cowork-shield-fork`
-- Branch: `codex/handoff-b-status-doc-clean`
+- Repo: `GreggBerretta/cloakroom`
+- Branch: `feature/rename-to-cloakroom`
 - Scope Baseline: `HANDOFF_B.md`
 - Execution Layer: HANDOFF_B core + Phase 2 v11 launch-prep additions
 - Performance Baseline Revision: post-optimization detection pipeline (regex prefilter + batched detection + canonicalized NER caching)
 
 ## Executive Status
-The fork is in a strong validation state with hardened fail-closed behavior and expanded governance/monetization controls.
+The repository is in a strong validation state with hardened fail-closed behavior and expanded governance/monetization controls.
 
 Implemented and validated in this branch:
 - deterministic replay + model hash lock
@@ -28,7 +28,7 @@ New v11 launch-prep additions in this update:
 - auditor-safe sanitization reports after operations
 - Pro-gated report export (JSON/PDF)
 - benchmark command + CI performance gate workflow
-- native menu-bar shell Swift target scaffold (`cowork-shield-menubar`)
+- native menu-bar shell Swift target scaffold (`cloakroom-menubar`)
 - opt-in local crash-report capture for handled wrapper failures
 
 ## Feature Coverage
@@ -48,7 +48,7 @@ New v11 launch-prep additions in this update:
 - column token namespace separated from PII token namespace
 
 ### Governance v1
-- `workspace close <name>` creates encrypted snapshot under `~/.safeai/backups/<workspace_id>/`
+- `workspace close <name>` creates encrypted snapshot under `~/.cloakroom/backups/<workspace_id>/`
 - `workspace recover --workspace <name> <backup-path>` restores vault snapshot
 - `workspace purge <name>` performs mandatory backup then clears mappings/records
 - `workspace set-governance <name> --self-destruct-on-restore` supported
@@ -66,7 +66,7 @@ New v11 launch-prep additions in this update:
 ### Wrapper / Native Shell
 - Wrapper core remains state-machine based with protocol validation
 - New Swift executable target:
-  - `wrapper/CoWorkShieldWrapper/Sources/CoWorkShieldMenuBar/main.swift`
+  - `wrapper/CloakroomWrapper/Sources/CloakroomMenuBar/main.swift`
   - status item, workspace switching, clipboard actions, login toggle, UI launch hooks
 - Sparkle updater path is currently a safe fallback (release page open) pending full Sparkle linking
 
@@ -77,7 +77,7 @@ New v11 launch-prep additions in this update:
 - Result: **297 passed, 0 failed**
 
 ### Swift Wrapper Build
-- Command: `swift build` (in `wrapper/CoWorkShieldWrapper`)
+- Command: `swift build` (in `wrapper/CloakroomWrapper`)
 - Result: **PASS**
 
 ### Wrapper Invariant Harness
@@ -94,10 +94,10 @@ New v11 launch-prep additions in this update:
 
 ### Current Baseline (Post-Optimization, 2026-02-24)
 Benchmark command used:
-- `uv run cowork-shield benchmark-performance -w perf-opt2-en-balanced --rows 10000 --language en --detection-mode balanced -o /tmp/cws_perf2_en_balanced.json`
-- `uv run cowork-shield benchmark-performance -w perf-opt2-en-speed --rows 10000 --language en --detection-mode speed -o /tmp/cws_perf2_en_speed.json`
-- `uv run cowork-shield benchmark-performance -w perf-opt2-he-balanced --rows 10000 --language he --detection-mode balanced -o /tmp/cws_perf2_he_balanced.json`
-- `uv run cowork-shield benchmark-performance -w perf-opt2-he-speed --rows 10000 --language he --detection-mode speed -o /tmp/cws_perf2_he_speed.json`
+- `uv run cloakroom benchmark-performance -w perf-opt2-en-balanced --rows 10000 --language en --detection-mode balanced -o /tmp/cloakroom_perf2_en_balanced.json`
+- `uv run cloakroom benchmark-performance -w perf-opt2-en-speed --rows 10000 --language en --detection-mode speed -o /tmp/cloakroom_perf2_en_speed.json`
+- `uv run cloakroom benchmark-performance -w perf-opt2-he-balanced --rows 10000 --language he --detection-mode balanced -o /tmp/cloakroom_perf2_he_balanced.json`
+- `uv run cloakroom benchmark-performance -w perf-opt2-he-speed --rows 10000 --language he --detection-mode speed -o /tmp/cloakroom_perf2_he_speed.json`
 
 Measured:
 - English 10k CSV anonymize (balanced): **1.96s** (target <= 8s) -> PASS
@@ -112,18 +112,18 @@ Delta vs prior baseline:
 - Hebrew anonymize: **20.00s -> 1.71s** (~91.4% faster)
 
 ## Key Paths Updated in This Pass
-- `src/cowork_shield/cli.py`
-- `src/cowork_shield/licensing.py`
-- `src/cowork_shield/workspace/manager.py`
-- `src/cowork_shield/pipeline/anonymize.py`
-- `src/cowork_shield/pipeline/restore.py`
-- `src/cowork_shield/clipboard/operations.py`
-- `src/cowork_shield/governance/reporting.py`
-- `src/cowork_shield/handlers/csv_handler.py`
-- `src/cowork_shield/handlers/xlsx.py`
-- `src/cowork_shield/performance/benchmark.py`
-- `wrapper/CoWorkShieldWrapper/Package.swift`
-- `wrapper/CoWorkShieldWrapper/Sources/CoWorkShieldMenuBar/main.swift`
+- `src/cloakroom/cli.py`
+- `src/cloakroom/licensing.py`
+- `src/cloakroom/workspace/manager.py`
+- `src/cloakroom/pipeline/anonymize.py`
+- `src/cloakroom/pipeline/restore.py`
+- `src/cloakroom/clipboard/operations.py`
+- `src/cloakroom/governance/reporting.py`
+- `src/cloakroom/handlers/csv_handler.py`
+- `src/cloakroom/handlers/xlsx.py`
+- `src/cloakroom/performance/benchmark.py`
+- `wrapper/CloakroomWrapper/Package.swift`
+- `wrapper/CloakroomWrapper/Sources/CloakroomMenuBar/main.swift`
 - `.github/workflows/performance-gate.yml`
 - `INSTALL.md`
 - `TROUBLESHOOTING.md`

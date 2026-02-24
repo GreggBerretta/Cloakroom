@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from cowork_shield.exceptions import UnsupportedFormatError
-from cowork_shield.pipeline.columns import inspect_columns
+from cloakroom.exceptions import UnsupportedFormatError
+from cloakroom.pipeline.columns import inspect_columns
 
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
 

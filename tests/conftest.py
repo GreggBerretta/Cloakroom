@@ -1,4 +1,4 @@
-"""Shared test fixtures for CoWork Shield."""
+"""Shared test fixtures for Cloakroom."""
 
 from pathlib import Path
 

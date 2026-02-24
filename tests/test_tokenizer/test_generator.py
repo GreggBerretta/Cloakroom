@@ -2,8 +2,8 @@
 
 import os
 
-from cowork_shield.models import EntityType
-from cowork_shield.tokenizer.generator import TokenGenerator, compute_hmac
+from cloakroom.models import EntityType
+from cloakroom.tokenizer.generator import TokenGenerator, compute_hmac
 
 
 class TestComputeHmac:

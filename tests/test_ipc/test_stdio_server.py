@@ -6,15 +6,15 @@ from io import BytesIO
 from pathlib import Path
 import types
 
-from cowork_shield.ipc.framing import encode_frame, recv_frame_stream
-from cowork_shield.ipc.protocol import PROTOCOL_VERSION
-from cowork_shield.ipc.server import IPCServer
-from cowork_shield.ipc.stdio_server import serve_stdio
-from cowork_shield.models import VaultData, now_iso
-from cowork_shield.tokenizer.generator import TokenGenerator
-from cowork_shield.vault.crypto import derive_hmac_key, generate_master_key
-from cowork_shield.vault.vault import Vault
-from cowork_shield.workspace.manager import WorkspaceContext
+from cloakroom.ipc.framing import encode_frame, recv_frame_stream
+from cloakroom.ipc.protocol import PROTOCOL_VERSION
+from cloakroom.ipc.server import IPCServer
+from cloakroom.ipc.stdio_server import serve_stdio
+from cloakroom.models import VaultData, now_iso
+from cloakroom.tokenizer.generator import TokenGenerator
+from cloakroom.vault.crypto import derive_hmac_key, generate_master_key
+from cloakroom.vault.vault import Vault
+from cloakroom.workspace.manager import WorkspaceContext
 
 
 class _FakeManager:
@@ -66,8 +66,8 @@ def test_stdio_mode_round_trip(tmp_path, monkeypatch):
     fake_stdin = types.SimpleNamespace(buffer=stream_in)
     fake_stdout = types.SimpleNamespace(buffer=stream_out)
 
-    monkeypatch.setattr("cowork_shield.ipc.stdio_server.sys.stdin", fake_stdin)
-    monkeypatch.setattr("cowork_shield.ipc.stdio_server.sys.stdout", fake_stdout)
+    monkeypatch.setattr("cloakroom.ipc.stdio_server.sys.stdin", fake_stdin)
+    monkeypatch.setattr("cloakroom.ipc.stdio_server.sys.stdout", fake_stdout)
 
     serve_stdio(server)
 

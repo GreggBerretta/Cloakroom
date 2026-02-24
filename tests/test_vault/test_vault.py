@@ -4,10 +4,10 @@ import os
 
 import pytest
 
-from cowork_shield.exceptions import VaultCorruptedError
-from cowork_shield.models import VaultData, now_iso
-from cowork_shield.vault.crypto import generate_master_key
-from cowork_shield.vault.vault import Vault
+from cloakroom.exceptions import VaultCorruptedError
+from cloakroom.models import VaultData, now_iso
+from cloakroom.vault.crypto import generate_master_key
+from cloakroom.vault.vault import Vault
 
 
 @pytest.fixture
@@ -76,7 +76,7 @@ class TestVault:
         assert loaded.workspace_name == "test-workspace"
 
     def test_mappings_persisted(self, vault, master_key, sample_vault_data):
-        from cowork_shield.models import EntityMapping, EntityType, Token
+        from cloakroom.models import EntityMapping, EntityType, Token
 
         token = Token(token_text="PERSON_001", entity_type=EntityType.PERSON, hmac_tag="abc")
         mapping = EntityMapping(

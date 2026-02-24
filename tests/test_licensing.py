@@ -7,8 +7,8 @@ import json
 
 import pytest
 
-from cowork_shield import licensing
-from cowork_shield.exceptions import (
+from cloakroom import licensing
+from cloakroom.exceptions import (
     LicenseFeatureError,
     LicenseKeyInvalidError,
     LicenseLimitExceededError,

@@ -6,10 +6,10 @@ from pathlib import Path
 import pytest
 from openpyxl import load_workbook
 
-from cowork_shield.detection.engine import DetectionEngine
-from cowork_shield.exceptions import ColumnSelectionError, XLSXContentLossRiskError
-from cowork_shield.handlers.xlsx import XlsxHandler
-from cowork_shield.tokenizer.generator import TokenGenerator
+from cloakroom.detection.engine import DetectionEngine
+from cloakroom.exceptions import ColumnSelectionError, XLSXContentLossRiskError
+from cloakroom.handlers.xlsx import XlsxHandler
+from cloakroom.tokenizer.generator import TokenGenerator
 
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
 

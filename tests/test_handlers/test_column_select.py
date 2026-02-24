@@ -2,8 +2,8 @@
 
 import pytest
 
-from cowork_shield.exceptions import ColumnSelectionError
-from cowork_shield.handlers.column_select import (
+from cloakroom.exceptions import ColumnSelectionError
+from cloakroom.handlers.column_select import (
     column_letter_to_index,
     index_to_column_letter,
     parse_columns_option,

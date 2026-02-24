@@ -2,13 +2,13 @@
 
 import pytest
 
-from cowork_shield.exceptions import ModelHashMismatchError, ReplayMismatchError
-from cowork_shield.models import DetectedEntity, EntityType, VaultData, now_iso
-from cowork_shield.pipeline.anonymize import AnonymizePipeline
-from cowork_shield.tokenizer.generator import TokenGenerator
-from cowork_shield.vault.crypto import derive_hmac_key, generate_master_key
-from cowork_shield.vault.vault import Vault
-from cowork_shield.workspace.manager import WorkspaceContext
+from cloakroom.exceptions import ModelHashMismatchError, ReplayMismatchError
+from cloakroom.models import DetectedEntity, EntityType, VaultData, now_iso
+from cloakroom.pipeline.anonymize import AnonymizePipeline
+from cloakroom.tokenizer.generator import TokenGenerator
+from cloakroom.vault.crypto import derive_hmac_key, generate_master_key
+from cloakroom.vault.vault import Vault
+from cloakroom.workspace.manager import WorkspaceContext
 
 
 class FakeDetectionEngine:

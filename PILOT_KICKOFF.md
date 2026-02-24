@@ -1,4 +1,4 @@
-# CoWork Shield Pilot Kickoff (HANDOFF B)
+# Cloakroom Pilot Kickoff (HANDOFF B)
 
 ## Scheduled Session
 - **Date:** Wednesday, February 25, 2026
@@ -18,7 +18,7 @@
   - `uv run pytest -q`
   - `uv run pytest -q tests/test_state_integrity/test_ec15_state_integrity.py`
 - Generate one recovery key export:
-  - `uv run cowork-shield workspace export-key --workspace <name> --output <name>.recovery.key`
+  - `uv run cloakroom workspace export-key --workspace <name> --output <name>.recovery.key`
 
 ## Agenda (45 min)
 1. 10 min: Scope, trust invariants, and pilot rules.
@@ -28,6 +28,6 @@
 
 ## Owners
 - Pilot Lead: Gregg Berretta
-- Engineering Owner: CoWork Shield core maintainer
-- Support Channel: `#cowork-shield-pilot`
+- Engineering Owner: Cloakroom core maintainer
+- Support Channel: `#cloakroom-pilot`
 

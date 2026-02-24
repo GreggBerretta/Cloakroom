@@ -5,17 +5,17 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from cowork_shield.governance.reporting import (
+from cloakroom.governance.reporting import (
     append_sanitization_report,
     build_anonymize_entity_counts,
     export_sanitization_reports,
     read_sanitization_reports,
 )
-from cowork_shield.models import EntityType, ReplacementRecord, VaultData, now_iso
-from cowork_shield.tokenizer.generator import TokenGenerator
-from cowork_shield.vault.crypto import derive_hmac_key, generate_master_key
-from cowork_shield.vault.vault import Vault
-from cowork_shield.workspace.manager import WorkspaceContext
+from cloakroom.models import EntityType, ReplacementRecord, VaultData, now_iso
+from cloakroom.tokenizer.generator import TokenGenerator
+from cloakroom.vault.crypto import derive_hmac_key, generate_master_key
+from cloakroom.vault.vault import Vault
+from cloakroom.workspace.manager import WorkspaceContext
 
 
 def _make_ctx(tmp_path: Path) -> WorkspaceContext:

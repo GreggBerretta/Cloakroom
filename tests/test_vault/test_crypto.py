@@ -2,7 +2,7 @@
 
 import pytest
 
-from cowork_shield.vault.crypto import (
+from cloakroom.vault.crypto import (
     decrypt,
     derive_hmac_key,
     derive_vault_key,

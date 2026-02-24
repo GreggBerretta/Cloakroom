@@ -1,4 +1,4 @@
-# CoWork Shield — PRD (HANDOFF B Validation)
+# Cloakroom — PRD (HANDOFF B Validation)
 
 **Version**: B-PRD v1  
 **Date**: February 22, 2026  

@@ -4,14 +4,14 @@ from pathlib import Path
 
 import pytest
 
-from cowork_shield.exceptions import IntegrityError, PdfInputOnlyError
-from cowork_shield.models import EntityMapping, Token, VaultData, now_iso
-from cowork_shield.pipeline.anonymize import AnonymizePipeline
-from cowork_shield.pipeline.restore import RestorePipeline
-from cowork_shield.tokenizer.generator import TokenGenerator
-from cowork_shield.vault.crypto import derive_hmac_key, generate_master_key
-from cowork_shield.vault.vault import Vault
-from cowork_shield.workspace.manager import WorkspaceContext
+from cloakroom.exceptions import IntegrityError, PdfInputOnlyError
+from cloakroom.models import EntityMapping, Token, VaultData, now_iso
+from cloakroom.pipeline.anonymize import AnonymizePipeline
+from cloakroom.pipeline.restore import RestorePipeline
+from cloakroom.tokenizer.generator import TokenGenerator
+from cloakroom.vault.crypto import derive_hmac_key, generate_master_key
+from cloakroom.vault.vault import Vault
+from cloakroom.workspace.manager import WorkspaceContext
 
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
 

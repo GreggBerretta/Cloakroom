@@ -3,10 +3,10 @@
 import pytest
 from types import SimpleNamespace
 
-from cowork_shield import detection
-from cowork_shield.exceptions import DetectionError
-from cowork_shield.detection.engine import DetectionEngine
-from cowork_shield.models import EntityType
+from cloakroom import detection
+from cloakroom.exceptions import DetectionError
+from cloakroom.detection.engine import DetectionEngine
+from cloakroom.models import EntityType
 
 
 @pytest.fixture(scope="module")

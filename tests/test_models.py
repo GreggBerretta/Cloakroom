@@ -1,6 +1,6 @@
 """Tests for core data models."""
 
-from cowork_shield.models import (
+from cloakroom.models import (
     AttestationRecord,
     EntityMapping,
     EntityType,

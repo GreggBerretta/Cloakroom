@@ -10,29 +10,29 @@ import time
 
 import pytest
 
-from cowork_shield.logging import audit as audit_mod
-from cowork_shield.logging import config as log_config
-from cowork_shield.logging.audit import append_audit_event, read_audit_events
-from cowork_shield.logging.config import (
+from cloakroom.logging import audit as audit_mod
+from cloakroom.logging import config as log_config
+from cloakroom.logging.audit import append_audit_event, read_audit_events
+from cloakroom.logging.config import (
     collect_log_payload,
     configure_logging,
     delete_log_files,
     export_log_files,
     log_event,
 )
-from cowork_shield.logging.sanitizer import sanitize_text, sanitize_value
-from cowork_shield.models import VaultData, now_iso
-from cowork_shield.tokenizer.generator import TokenGenerator
-from cowork_shield.vault.crypto import derive_hmac_key, generate_master_key
-from cowork_shield.vault.vault import Vault
-from cowork_shield.workspace.manager import WorkspaceContext
+from cloakroom.logging.sanitizer import sanitize_text, sanitize_value
+from cloakroom.models import VaultData, now_iso
+from cloakroom.tokenizer.generator import TokenGenerator
+from cloakroom.vault.crypto import derive_hmac_key, generate_master_key
+from cloakroom.vault.vault import Vault
+from cloakroom.workspace.manager import WorkspaceContext
 
 
 @pytest.fixture
 def isolated_logs(tmp_path, monkeypatch):
     log_dir = tmp_path / "logs"
     monkeypatch.setattr(log_config, "LOG_DIR", log_dir)
-    monkeypatch.setattr(log_config, "LOG_FILE", log_dir / "cowork_shield.log")
+    monkeypatch.setattr(log_config, "LOG_FILE", log_dir / "cloakroom.log")
     monkeypatch.setattr(log_config, "LOG_KEY_FILE", log_dir / ".logkey")
     return log_dir
 
@@ -92,7 +92,7 @@ def test_log_file_permissions_and_content_sanitization(isolated_logs):
         "test_log",
         "Email john.smith@acme.com token [PERSON_00001]",
     )
-    for handler in logging.getLogger("cowork_shield").handlers:
+    for handler in logging.getLogger("cloakroom").handlers:
         if hasattr(handler, "flush"):
             handler.flush()
 
@@ -112,7 +112,7 @@ def test_log_file_permissions_and_content_sanitization(isolated_logs):
 
 def test_log_retention_deletes_old_files(isolated_logs):
     isolated_logs.mkdir(parents=True, exist_ok=True)
-    old_file = isolated_logs / "cowork_shield.log.5"
+    old_file = isolated_logs / "cloakroom.log.5"
     old_file.write_text("{}", encoding="utf-8")
     thirty_one_days_ago = time.time() - (31 * 24 * 3600)
     os.utime(old_file, (thirty_one_days_ago, thirty_one_days_ago))

@@ -1,9 +1,9 @@
-# CoWork Shield — HANDOFF B (Internal Validation Build)
+# Cloakroom — HANDOFF B (Internal Validation Build)
 
 **Version**: B.1  
 **Date**: February 22, 2026  
 **Status**: Active internal validation scope  
-**Repo**: [GreggBerretta/cowork-shield](https://github.com/GreggBerretta/cowork-shield)
+**Repo**: [GreggBerretta/cloakroom](https://github.com/GreggBerretta/cloakroom)
 
 ## 1) Purpose
 HANDOFF B defines the lean internal build focused on trust invariants, deterministic replay, and practical consultant workflows.  
@@ -47,12 +47,12 @@ For Phase 2+ wrapper reintegration, see `WRAPPER_ARCHITECTURE_ADDENDUM.md` (whic
 
 ## 6) Commands
 ```bash
-uv run cowork-shield anonymize FILE -w WORKSPACE
-uv run cowork-shield restore FILE -w WORKSPACE
-uv run cowork-shield shield-clipboard -w WORKSPACE
-uv run cowork-shield restore-clipboard -w WORKSPACE
-uv run cowork-shield workspace list
-uv run cowork-shield workspace show WORKSPACE
+uv run cloakroom anonymize FILE -w WORKSPACE
+uv run cloakroom restore FILE -w WORKSPACE
+uv run cloakroom shield-clipboard -w WORKSPACE
+uv run cloakroom restore-clipboard -w WORKSPACE
+uv run cloakroom workspace list
+uv run cloakroom workspace show WORKSPACE
 ```
 
 ## 7) Validation Status

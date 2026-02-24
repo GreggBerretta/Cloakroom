@@ -1,6 +1,6 @@
 """Tests for cheap PII detection prefilter heuristics."""
 
-from cowork_shield.handlers.pii_prefilter import should_detect_pii
+from cloakroom.handlers.pii_prefilter import should_detect_pii
 
 
 def test_prefilter_skips_empty_and_punctuation():

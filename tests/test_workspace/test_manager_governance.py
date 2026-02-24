@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from cowork_shield.models import EntityType
-from cowork_shield.workspace import manager as manager_mod
-from cowork_shield.workspace.manager import WorkspaceManager
+from cloakroom.models import EntityType
+from cloakroom.workspace import manager as manager_mod
+from cloakroom.workspace.manager import WorkspaceManager
 
 
 @pytest.fixture

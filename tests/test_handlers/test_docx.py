@@ -6,9 +6,9 @@ from pathlib import Path
 import pytest
 from docx import Document
 
-from cowork_shield.detection.engine import DetectionEngine
-from cowork_shield.handlers.docx import DocxHandler
-from cowork_shield.tokenizer.generator import TokenGenerator
+from cloakroom.detection.engine import DetectionEngine
+from cloakroom.handlers.docx import DocxHandler
+from cloakroom.tokenizer.generator import TokenGenerator
 
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
 

@@ -1,10 +1,10 @@
-# CoWork Shield Internal Install (HANDOFF B)
+# Cloakroom Internal Install (HANDOFF B)
 
 This install path is for the HANDOFF B internal validation build plus the Phase 2+ wrapper-core/IPC layer.
 
 > [!WARNING]
 > **PDF is input-only.**
-> Uploading `.pdf` creates extracted `.md` or `.docx` output. CoWork Shield does **not** reconstruct original PDF binaries or exact layout.
+> Uploading `.pdf` creates extracted `.md` or `.docx` output. Cloakroom does **not** reconstruct original PDF binaries or exact layout.
 
 > [!WARNING]
 > **XLSX chart/image loss risk is blocking unless explicitly acknowledged.**
@@ -22,7 +22,7 @@ Current recommendation:
 - Not recommended now: PyInstaller packaging (defer unless users reject Python environment setup)
 
 This document covers the current supported path: `uv sync`.
-For pilot operators, see `/Users/greggberretta/Documents/New project/cowork-shield-fork-only/PILOT_QUICKSTART.md`.
+For pilot operators, see `PILOT_QUICKSTART.md`.
 
 ## Prerequisites
 - macOS (tested on Apple Silicon + recent Intel)
@@ -32,19 +32,9 @@ For pilot operators, see `/Users/greggberretta/Documents/New project/cowork-shie
 
 ## Install Steps
 ```bash
-git clone https://github.com/GreggBerretta/cowork-shield-fork.git
-cd cowork-shield-fork
-git checkout codex/handoff-b-status-doc-clean
-uv sync --extra dev
-uv run python -m ensurepip
-uv run python -m spacy download en_core_web_lg
-uv run python -m spacy download he_core_news_sm || uv run python -m spacy download xx_ent_wiki_sm
-```
-
-If you are installing from the source repo instead of the fork:
-```bash
-git clone https://github.com/GreggBerretta/cowork-shield.git
-cd cowork-shield
+git clone https://github.com/GreggBerretta/cloakroom.git
+cd cloakroom
+git checkout main
 uv sync --extra dev
 uv run python -m ensurepip
 uv run python -m spacy download en_core_web_lg
@@ -53,13 +43,13 @@ uv run python -m spacy download he_core_news_sm || uv run python -m spacy downlo
 
 Optional shell alias for daily usage:
 ```bash
-alias cws='uv run cowork-shield'
+alias cloak='uv run cloakroom'
 ```
 
 ## First-Run Onboarding (Pilot Required)
 Run this once per machine/user before pilot work:
 ```bash
-uv run cowork-shield onboarding --workspace default
+uv run cloakroom onboarding --workspace default
 ```
 
 Onboarding:
@@ -70,7 +60,7 @@ Onboarding:
 
 ## Verify
 ```bash
-uv run cowork-shield --version
+uv run cloakroom --version
 uv run pytest -q
 uv run pytest -q tests/test_state_integrity/test_ec15_state_integrity.py
 ```
@@ -82,59 +72,59 @@ Expected:
 
 Wrapper-core invariant check:
 ```bash
-cd wrapper/CoWorkShieldWrapper
+cd wrapper/CloakroomWrapper
 swift run wrapper-invariant-checks
 ```
 
 Native menu bar shell (Swift target):
 ```bash
-cd wrapper/CoWorkShieldWrapper
-swift run cowork-shield-menubar
+cd wrapper/CloakroomWrapper
+swift run cloakroom-menubar
 ```
 
 ## Usage Quick Start
 ```bash
-uv run cowork-shield anonymize ./sample.txt -w client-a
-uv run cowork-shield restore ./sample.anonymized.txt -w client-a
-uv run cowork-shield anonymize ./hebrew.txt -w client-a --language he
-uv run cowork-shield anonymize ./brief.pdf -w client-a --pdf-output-format md
-uv run cowork-shield inspect-columns ./deals.xlsx
-uv run cowork-shield anonymize ./deals.xlsx -w client-a --columns "Deal ID,Client Name"
-uv run cowork-shield anonymize ./deals.csv -w client-a --columns A,C --detect-pii
-uv run cowork-shield workspace verify-security
+uv run cloakroom anonymize ./sample.txt -w client-a
+uv run cloakroom restore ./sample.anonymized.txt -w client-a
+uv run cloakroom anonymize ./hebrew.txt -w client-a --language he
+uv run cloakroom anonymize ./brief.pdf -w client-a --pdf-output-format md
+uv run cloakroom inspect-columns ./deals.xlsx
+uv run cloakroom anonymize ./deals.xlsx -w client-a --columns "Deal ID,Client Name"
+uv run cloakroom anonymize ./deals.csv -w client-a --columns A,C --detect-pii
+uv run cloakroom workspace verify-security
 # Optional raw fallback check (same invariant, canonical vault path)
-stat -f "%Sp %N" ~/.cowork-shield/workspaces/*/vault.enc
+stat -f "%Sp %N" ~/.cloakroom/workspaces/*/vault.enc
 ```
 
 PDF note:
 - PDF is input-only.
-- CoWork Shield extracts PDF content to Markdown, then anonymizes that extracted text.
+- Cloakroom extracts PDF content to Markdown, then anonymizes that extracted text.
 - Restore operates on tokenized `.md` or `.docx` outputs, not on `.pdf`.
 
 First workspace sanity check:
 ```bash
-uv run cowork-shield workspace list
-uv run cowork-shield workspace show client-a
+uv run cloakroom workspace list
+uv run cloakroom workspace show client-a
 ```
 
 Vault governance commands:
 ```bash
 # Explicit close snapshot backup
-uv run cowork-shield workspace close client-a
+uv run cloakroom workspace close client-a
 
 # Recover workspace mappings from backup snapshot
-uv run cowork-shield workspace recover --workspace client-a ~/.safeai/backups/<workspace_id>/vault-<timestamp>.enc
+uv run cloakroom workspace recover --workspace client-a ~/.cloakroom/backups/<workspace_id>/vault-<timestamp>.enc
 
 # Mandatory-backup purge of mappings/file records
-uv run cowork-shield workspace purge client-a --yes
+uv run cloakroom workspace purge client-a --yes
 
 # Enable/disable self-destruct on restore
-uv run cowork-shield workspace set-governance client-a --self-destruct-on-restore
-uv run cowork-shield workspace set-governance client-a --no-self-destruct-on-restore
+uv run cloakroom workspace set-governance client-a --self-destruct-on-restore
+uv run cloakroom workspace set-governance client-a --no-self-destruct-on-restore
 
 # Reports (Free = view, Pro = export)
-uv run cowork-shield workspace report show --workspace client-a
-uv run cowork-shield workspace report export --workspace client-a --format json --output ./client-a-report.json --license-key pro_...
+uv run cloakroom workspace report show --workspace client-a
+uv run cloakroom workspace report export --workspace client-a --format json --output ./client-a-report.json --license-key pro_...
 ```
 
 Spreadsheet column-selective anonymization:
@@ -152,7 +142,7 @@ Spreadsheet column-selective anonymization:
 ## Textual UI (Terminal)
 Launch the terminal UI:
 ```bash
-uv run cowork-shield-tui
+uv run cloakroom-tui
 ```
 
 Inside the TUI:
@@ -174,7 +164,7 @@ Inside the TUI:
 ## Gradio UI (Web)
 Launch local web UI:
 ```bash
-uv run cowork-shield-gradio
+uv run cloakroom-gradio
 ```
 
 Default URL: `http://127.0.0.1:7860`
@@ -193,26 +183,26 @@ Features:
 
 Clipboard flow:
 ```bash
-uv run cowork-shield shield-clipboard -w client-a
-uv run cowork-shield restore-clipboard -w client-a
-uv run cowork-shield shield-clipboard -w client-a --language he
+uv run cloakroom shield-clipboard -w client-a
+uv run cloakroom restore-clipboard -w client-a
+uv run cloakroom shield-clipboard -w client-a --language he
 ```
 
 Performance benchmark gate:
 ```bash
-uv run cowork-shield benchmark-performance --rows 10000 --language en --output ./perf-en.json
-uv run cowork-shield benchmark-performance --rows 10000 --language he --output ./perf-he.json
+uv run cloakroom benchmark-performance --rows 10000 --language en --output ./perf-en.json
+uv run cloakroom benchmark-performance --rows 10000 --language he --output ./perf-he.json
 ```
 
 ## IPC Bridge (Swift Wrapper Hybrid Modes)
 Mode A (default wrapper mode): subprocess stdio bridge
 ```bash
-uv run cowork-shield ipc-stdio
+uv run cloakroom ipc-stdio
 ```
 
 Mode B: AF_UNIX socket daemon
 ```bash
-uv run cowork-shield ipc-server --socket-path ~/.cowork-shield/ipc/engine.sock
+uv run cloakroom ipc-server --socket-path ~/.cloakroom/ipc/engine.sock
 ```
 
 Notes:
@@ -229,8 +219,8 @@ License enforcement (wrapper IPC path):
 ## Language Support
 - Supported detection languages: `auto`, `en`, `he`
 - CLI options:
-  - `cowork-shield anonymize ... --language he`
-  - `cowork-shield shield-clipboard ... --language he`
+  - `cloakroom anonymize ... --language he`
+  - `cloakroom shield-clipboard ... --language he`
 - UI options:
   - TUI language selector (`Auto`/`English`/`Hebrew`)
   - Gradio shield tab language dropdown (`auto`/`en`/`he`)
@@ -253,8 +243,8 @@ Optional backend flags:
 
 Examples:
 ```bash
-uv run cowork-shield anonymize ./hebrew.txt --language he --hebrew-backend stanza
-uv run cowork-shield anonymize ./hebrew.txt --language he --hebrew-backend transformers --hebrew-transformer-model CordwainerSmith/GolemPII-v1
+uv run cloakroom anonymize ./hebrew.txt --language he --hebrew-backend stanza
+uv run cloakroom anonymize ./hebrew.txt --language he --hebrew-backend transformers --hebrew-transformer-model CordwainerSmith/GolemPII-v1
 ```
 
 Install optional backend dependencies:
@@ -271,8 +261,8 @@ uv pip install transformers spacy-huggingface-pipelines
 
 Environment variable equivalents:
 ```bash
-export CWS_HEBREW_NLP_ENGINE=transformers
-export CWS_HEBREW_TRANSFORMER_MODEL=CordwainerSmith/GolemPII-v1
+export CLOAKROOM_HEBREW_NLP_ENGINE=transformers
+export CLOAKROOM_HEBREW_TRANSFORMER_MODEL=CordwainerSmith/GolemPII-v1
 ```
 
 ## PDF Extraction Backends
@@ -293,22 +283,22 @@ uv run python -c "import fitz; print('PyMuPDF OK')"
 ## Key Recovery (Admin)
 Export encrypted recovery key:
 ```bash
-uv run cowork-shield workspace export-key --workspace client-a --output ./client-a.recovery.key
+uv run cloakroom workspace export-key --workspace client-a --output ./client-a.recovery.key
 ```
 
 Import encrypted recovery key:
 ```bash
-uv run cowork-shield workspace import-key --workspace client-a --input ./client-a.recovery.key
+uv run cloakroom workspace import-key --workspace client-a --input ./client-a.recovery.key
 ```
 
 Force replace existing Keychain entry (admin only):
 ```bash
-uv run cowork-shield workspace import-key --workspace client-a --input ./client-a.recovery.key --force
+uv run cloakroom workspace import-key --workspace client-a --input ./client-a.recovery.key --force
 ```
 
 ## Logging & Observability
 Default behavior:
-- Structured JSON logs: `~/.cowork_shield/logs/cowork_shield.log`
+- Structured JSON logs: `~/.cloakroom/logs/cloakroom.log`
 - File mode: `0600` (owner read/write only)
 - Rotation: `10 MB` max, `5` files retained
 - Retention: `30` days
@@ -316,9 +306,9 @@ Default behavior:
 
 CLI flags:
 ```bash
-uv run cowork-shield --verbose ...
-uv run cowork-shield --no-logging ...
-uv run cowork-shield --encrypt-logs ...
+uv run cloakroom --verbose ...
+uv run cloakroom --no-logging ...
+uv run cloakroom --encrypt-logs ...
 ```
 
 > [!WARNING]
@@ -327,30 +317,30 @@ uv run cowork-shield --encrypt-logs ...
 Export sanitized logs for support:
 ```bash
 # App logs + all workspace audit logs
-uv run cowork-shield logs export --output ./support-logs.json
+uv run cloakroom logs export --output ./support-logs.json
 
 # App logs only
-uv run cowork-shield logs export --no-include-audit --output ./support-app-logs.json
+uv run cloakroom logs export --no-include-audit --output ./support-app-logs.json
 
 # Single workspace audit scope
-uv run cowork-shield logs export --workspace client-a --output ./client-a-logs.json
+uv run cloakroom logs export --workspace client-a --output ./client-a-logs.json
 ```
 
 Delete local logs:
 ```bash
 # Delete rotating app logs only
-uv run cowork-shield logs delete --yes
+uv run cloakroom logs delete --yes
 
 # Delete app logs + one workspace audit log
-uv run cowork-shield logs delete --workspace client-a --yes
+uv run cloakroom logs delete --workspace client-a --yes
 
 # Delete app logs + all workspace audit logs
-uv run cowork-shield logs delete --all-audits --yes
+uv run cloakroom logs delete --all-audits --yes
 ```
 
 Inspect signed audit events:
 ```bash
-uv run cowork-shield workspace show client-a --audit
+uv run cloakroom workspace show client-a --audit
 ```
 
 ## Notes
