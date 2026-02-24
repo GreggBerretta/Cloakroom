@@ -95,6 +95,8 @@ uv run cowork-shield inspect-columns ./deals.xlsx
 uv run cowork-shield anonymize ./deals.xlsx -w client-a --columns "Deal ID,Client Name"
 uv run cowork-shield anonymize ./deals.csv -w client-a --columns A,C --detect-pii
 uv run cowork-shield workspace verify-security
+# Optional raw fallback check (same invariant, canonical vault path)
+stat -f "%Sp %N" ~/.cowork-shield/workspaces/*/vault.enc
 ```
 
 PDF note:

@@ -221,8 +221,10 @@ This document is intended to be sufficient for another engineer to continue with
 5. Run `uv run python -m spacy download he_core_news_sm || uv run python -m spacy download xx_ent_wiki_sm`.
 6. Run `uv run pytest -q` and confirm green.
 7. Run `uv run pytest -q tests/test_state_integrity/test_ec15_state_integrity.py`.
-8. Review docs in this order: `HANDOFF_B.md`, `PRD_HANDOFF_B.md`, `HANDOFF_B_STATUS.md`, `INSTALL.md`, `TROUBLESHOOTING.md`.
-9. Continue next on weekly drift + performance sentinel implementation.
+8. Run `uv run cowork-shield workspace verify-security`.
+9. Optional raw fallback permission check: `stat -f "%Sp %N" ~/.cowork-shield/workspaces/*/vault.enc`.
+10. Review docs in this order: `HANDOFF_B.md`, `PRD_HANDOFF_B.md`, `HANDOFF_B_STATUS.md`, `INSTALL.md`, `TROUBLESHOOTING.md`, `PILOT_QUICKSTART.md`.
+11. Continue next on weekly drift + performance sentinel implementation.
 
 ## 10) Go/No-Go Matrix (Current)
 | Criterion | Status | Evidence |

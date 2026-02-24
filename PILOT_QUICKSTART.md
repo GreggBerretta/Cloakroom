@@ -19,6 +19,8 @@ This step creates workspace state and exports encrypted recovery key.
 ## 3) Safety Checks (Pilot Blockers)
 ```bash
 uv run cowork-shield workspace verify-security
+# Optional raw fallback check (canonical vault path)
+stat -f "%Sp %N" ~/.cowork-shield/workspaces/*/vault.enc
 uv run pytest -q tests/test_state_integrity/test_ec15_state_integrity.py
 ```
 

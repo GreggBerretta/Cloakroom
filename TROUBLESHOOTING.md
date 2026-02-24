@@ -86,6 +86,8 @@ uv run cowork-shield ipc-server --socket-path ~/.cowork-shield/ipc/engine.sock
 Run pilot-blocking local security verification:
 ```bash
 uv run cowork-shield workspace verify-security
+# Optional raw fallback check (canonical vault path)
+stat -f "%Sp %N" ~/.cowork-shield/workspaces/*/vault.enc
 ```
 
 ## 2a) Column Selection Errors (CSV/XLSX)
