@@ -1,19 +1,26 @@
 # CoWork Shield Fork Status Report
 
 ## Snapshot
-- Date: 2026-02-23 02:20:00 UTC
+- Date: 2026-02-24 00:00:00 UTC
 - Repository: `GreggBerretta/cowork-shield-fork`
 - Branch: `codex/handoff-b-status-doc-clean`
 - Scope baseline: `HANDOFF_B.md` and `PRD_HANDOFF_B.md`
 - Product mode: Internal validation engine + Phase 2+ wrapper core/protocol implementation
 
 ## Executive Summary
-The fork currently has a hardened local anonymize/restore engine with fail-closed recovery behavior, deterministic replay controls, model hash locking, auditable overrides, Hebrew support, PDF input-only conversion support, spreadsheet column-selective anonymization, clipboard workflows, and two frontends (Textual TUI and Gradio web UI). It now includes a hybrid IPC wrapper core: Mode A subprocess stdio (default) and Mode B AF_UNIX socket, with state-machine, framing, protocol-validation, clipboard-guard, anti-false-success gating, and engine-side license policy checks.
+The fork currently has a hardened local anonymize/restore engine with fail-closed recovery behavior, deterministic replay controls, model hash locking, auditable overrides, Hebrew support, PDF input-only conversion support, spreadsheet column-selective anonymization, clipboard workflows, and two frontends (Textual TUI and Gradio web UI). It includes a hybrid IPC wrapper core: Mode A subprocess stdio (default) and Mode B AF_UNIX socket, with state-machine, framing, protocol-validation, clipboard-guard, anti-false-success gating, and engine-side license policy checks.
+
+Latest pilot-blocking additions are implemented:
+- Logging/observability module with sanitization, signed audit trail, retention/rotation, and log export/delete CLI.
+- First-run onboarding flow (`cowork-shield onboarding`) with recovery-key export path.
+- Workspace security verification (`cowork-shield workspace verify-security`) for vault permissions and keychain checks.
+- Canonical vault permission checks standardized to `~/.cowork-shield/workspaces/*/vault.enc`.
+- Dependency vulnerability scan workflow (`.github/workflows/security-scan.yml`) using `pip-audit`.
 
 Current validation status is green:
 - `uv run ruff check src tests` passes.
-- `uv run pytest -q` passes with **259 passed**.
-- `uv run pytest -q tests/test_state_integrity/test_ec15_state_integrity.py` passes with **14 passed**.
+- `uv run pytest -q` passes with **291 passed**.
+- `uv run pytest -q tests/test_state_integrity/test_ec15_state_integrity.py` passes with **18 passed**.
 - `swift run wrapper-invariant-checks` passes in `wrapper/CoWorkShieldWrapper`.
 
 ## Implemented Baseline Functionality
@@ -202,10 +209,16 @@ uv run ruff check src tests
 # All checks passed
 
 uv run pytest -q
-# 259 passed, 1 warning
+# 291 passed, 1 warning
 
 uv run pytest -q tests/test_state_integrity/test_ec15_state_integrity.py
-# 14 passed, 1 warning
+# 18 passed, 1 warning
+
+uv run cowork-shield workspace verify-security
+# PASS (vault file permissions + keychain service checks)
+
+uvx --with pip-audit pip-audit
+# No known vulnerabilities found
 
 cd wrapper/CoWorkShieldWrapper
 swift run wrapper-invariant-checks
@@ -219,6 +232,7 @@ Covered tests include:
 - Concurrency and multi-actor safety
 - Vault integrity corruption/deletion handling
 - Environment edge scenarios (sleep/wake, clock skew, disk full)
+- Log integrity checks (sanitization, permissions, retention, tamper detection)
 
 ### Added Test Coverage for Column Selective Feature
 New or expanded tests include:
@@ -251,12 +265,14 @@ Workflows in `.github/workflows`:
 - `ci.yml` -> lint + full test suite
 - `ec15-gate.yml` -> EC-15 gate on push
 - `weekly-trust-gate.yml` -> scheduled weekly run with dependency snapshot artifact + full tests + EC-15
+- `security-scan.yml` -> dependency vulnerability audit (`pip-audit`)
 
 ## Operational Docs Present
 - `INSTALL.md`
 - `TROUBLESHOOTING.md`
 - `PERFORMANCE.md`
 - `PILOT_KICKOFF.md`
+- `PILOT_QUICKSTART.md`
 - `HANDOFF_B.md`
 - `PRD_HANDOFF_B.md`
 - `HANDOFF_B_STATUS.md`

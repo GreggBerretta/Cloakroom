@@ -1,6 +1,6 @@
 # CoWork Shield — HANDOFF B Status (Engineer Transfer)
 
-**Status Date:** February 23, 2026  
+**Status Date:** February 24, 2026  
 **Status Basis:** `HANDOFF_B.md` + `PRD_HANDOFF_B.md`  
 **Scope:** Internal validation track + Phase 2+ wrapper core/protocol implementation
 
@@ -8,7 +8,7 @@
 - Source repo: [GreggBerretta/cowork-shield](https://github.com/GreggBerretta/cowork-shield)
 - Fork repo: [GreggBerretta/cowork-shield-fork](https://github.com/GreggBerretta/cowork-shield-fork)
 - Active integration branch: `codex/handoff-b-status-doc-clean`
-- Snapshot commit: `3368ba8` (fork + local branch head)
+- Snapshot commit: current branch head on `codex/handoff-b-status-doc-clean` at handoff time
 - Pilot kickoff issue: [#1](https://github.com/GreggBerretta/cowork-shield/issues/1)
 - Pilot milestone: `Pilot Kickoff Week (2026-02-23)`
 
@@ -56,6 +56,7 @@ This document is intended to be sufficient for another engineer to continue with
 - Vault atomic writes now enforce `0600` permissions on persisted vault files.
 - Gradio runtime enforces localhost binding and now requires explicit PDF output acknowledgment before processing PDF input.
 - Security dependency scan workflow is implemented (`.github/workflows/security-scan.yml`) using `pip-audit`.
+- Security and pilot checklists now consistently use `workspace verify-security` and canonical vault path checks (`~/.cowork-shield/workspaces/*/vault.enc`).
 
 ### Validation
 - Full test suite: **291 passed**.
