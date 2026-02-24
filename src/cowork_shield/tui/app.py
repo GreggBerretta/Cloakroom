@@ -148,6 +148,11 @@ class CoWorkShieldApp(App[None]):
                 placeholder="Override reason (required if force re-anonymize is enabled)",
                 id="override_reason",
             )
+            yield Input(
+                placeholder="License key (optional, pro_...)",
+                id="license_key",
+                password=True,
+            )
             with Horizontal():
                 yield Button("Preview", id="preview", variant="default")
                 yield Button("Load Columns", id="load_columns", variant="default")
@@ -241,6 +246,7 @@ class CoWorkShieldApp(App[None]):
         allow_lossy_xlsx = self.query_one("#allow_lossy_xlsx", Checkbox).value
         force_reanonymize = self.query_one("#force_reanonymize", Checkbox).value
         override_reason = (self.query_one("#override_reason", Input).value or "").strip()
+        license_key = (self.query_one("#license_key", Input).value or "").strip()
 
         if force_reanonymize and not override_reason:
             self._set_status("Force re-anonymize requires an override reason.")
@@ -277,6 +283,7 @@ class CoWorkShieldApp(App[None]):
                 allow_lossy_xlsx=allow_lossy_xlsx,
                 force_reanonymize=force_reanonymize,
                 reason=override_reason,
+                license_key=license_key,
             )
             self._set_table_rows(result.entity_rows)
             self._set_status(result.summary)
@@ -289,8 +296,9 @@ class CoWorkShieldApp(App[None]):
         if path is None:
             return
         workspace = self._selected_workspace()
+        license_key = (self.query_one("#license_key", Input).value or "").strip()
         try:
-            result = restore_file(path, workspace)
+            result = restore_file(path, workspace, license_key=license_key)
             self._set_status(result.summary)
         except (CoWorkShieldError, OSError) as exc:
             code, message = sanitize_ui_error(exc)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
 import shutil
 from pathlib import Path
 
@@ -92,6 +93,7 @@ class XlsxHandler:
                 baseline_selection,
             )
             for row in ws.iter_rows():
+                pii_candidates: list[tuple[object, str]] = []
                 for cell in row:
                     if cell.value is None:
                         continue
@@ -139,24 +141,30 @@ class XlsxHandler:
                     if isinstance(cell.value, (int, float)):
                         continue
 
-                    source_id = (
-                        f"{sheet_name}!{get_column_letter(cell.column)}{cell.row}"
-                    )
+                    pii_candidates.append((cell, value_str))
 
-                    entities = _detect_entities(
-                        detection_engine,
-                        text=value_str,
-                        source_id=source_id,
-                        language=language,
-                    )
+                if not detect_pii or not pii_candidates:
+                    continue
+
+                detected_by_cell = _detect_entities_for_xlsx_row(
+                    detection_engine,
+                    sheet_name=sheet_name,
+                    candidates=pii_candidates,
+                    language=language,
+                )
+                for cell, entities in detected_by_cell.items():
                     total_entities += len(entities)
-
-                    if entities:
-                        replaced, records = self._replacer.replace_entities(
-                            value_str, entities, token_generator, source_file
-                        )
-                        cell.value = replaced
-                        all_records.extend(records)
+                    if not entities:
+                        continue
+                    source_value = str(cell.value)
+                    replaced, records = self._replacer.replace_entities(
+                        source_value,
+                        entities,
+                        token_generator,
+                        source_file,
+                    )
+                    cell.value = replaced
+                    all_records.extend(records)
 
         wb.save(str(output_path))
         wb.close()
@@ -218,6 +226,8 @@ class XlsxHandler:
                         continue
 
                     value_str = str(cell.value)
+                    if "[" not in value_str and "_" not in value_str:
+                        continue
                     restored = self._replacer.restore_tokens(value_str, reverse_lookup)
                     if restored != value_str:
                         cell.value = restored
@@ -286,15 +296,51 @@ class XlsxHandler:
         }
 
 
-def _detect_entities(
+def _detect_entities_for_xlsx_row(
     detection_engine: DetectionEngine,
     *,
-    text: str,
-    source_id: str,
+    sheet_name: str,
+    candidates: list[tuple[object, str]],
     language: str,
-) -> list[DetectedEntity]:
+) -> dict[object, list[DetectedEntity]]:
+    delimiter = "\u241f"
+    merged_text = delimiter.join(value for _, value in candidates)
+    source_id = f"{sheet_name}:row"
     try:
-        return detection_engine.detect_in_cell(text, source_id, language=language)
+        merged_entities = detection_engine.detect_in_cell(merged_text, source_id, language=language)
     except TypeError:
         # Compatibility for tests using stub engines without language arg.
-        return detection_engine.detect_in_cell(text, source_id)
+        merged_entities = detection_engine.detect_in_cell(merged_text, source_id)
+
+    segments: list[tuple[object, int, int, str]] = []
+    cursor = 0
+    for cell, value in candidates:
+        start = cursor
+        end = start + len(value)
+        segments.append((cell, start, end, value))
+        cursor = end + len(delimiter)
+
+    entities_by_cell: dict[object, list[DetectedEntity]] = defaultdict(list)
+    for entity in merged_entities:
+        for cell, start, end, value in segments:
+            if entity.start < start or entity.end > end:
+                continue
+            local_start = entity.start - start
+            local_end = entity.end - start
+            if local_start < 0 or local_end > len(value):
+                continue
+            entities_by_cell[cell].append(
+                DetectedEntity(
+                    entity_type=entity.entity_type,
+                    text=value[local_start:local_end],
+                    start=local_start,
+                    end=local_end,
+                    score=entity.score,
+                    source_id=f"{sheet_name}!{get_column_letter(cell.column)}{cell.row}",
+                )
+            )
+            break
+
+    for cell in entities_by_cell:
+        entities_by_cell[cell].sort(key=lambda item: item.start)
+    return entities_by_cell

@@ -240,3 +240,38 @@ If you see binary compatibility errors (for example `numpy.dtype size changed`):
 ```bash
 uv sync --extra dev
 ```
+
+## 10) Governance / Recovery Operations
+If workspace state is suspected stale or over-retained:
+```bash
+# Create explicit encrypted backup snapshot
+uv run cowork-shield workspace close <workspace>
+
+# Recover from a snapshot
+uv run cowork-shield workspace recover --workspace <workspace> ~/.safeai/backups/<workspace_id>/vault-<timestamp>.enc
+
+# Purge mappings (creates mandatory backup first)
+uv run cowork-shield workspace purge <workspace> --yes
+```
+
+If restore should clear mappings immediately after success:
+```bash
+uv run cowork-shield workspace set-governance <workspace> --self-destruct-on-restore
+```
+
+## 11) Performance Regression Checks
+Run current benchmark:
+```bash
+uv run cowork-shield benchmark-performance --rows 10000 --language en --output ./perf-en.json
+uv run cowork-shield benchmark-performance --rows 10000 --language he --output ./perf-he.json
+```
+
+v11 targets:
+- 10k CSV anonymize <= 8s
+- 10k CSV restore <= 2s
+- Clipboard round-trip <= 1.5s
+
+If anonymize is above budget:
+- Use column-selective mode for large sheets.
+- Split very large files into batches.
+- Collect benchmark JSON and attach to support incident.

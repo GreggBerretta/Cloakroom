@@ -188,8 +188,9 @@ class FileRecord:
 class VaultData:
     """The complete vault contents, serialized to encrypted JSON.
 
-    Version 2.0 adds observability metadata, behavioral prompt tracking,
-    attestation records, detection model hashes, and token ABI versioning.
+    Version 2.0 includes governance controls (self-destruct on restore) on top of
+    observability metadata, behavioral prompt tracking, detection model hashes,
+    and token ABI versioning.
     """
 
     workspace_id: str
@@ -231,6 +232,9 @@ class VaultData:
     # Token format version
     token_abi_version: str = "v2"
 
+    # Vault governance v1
+    self_destruct_on_restore: bool = False
+
     def to_dict(self) -> dict:
         return {
             "vault_version": self.vault_version,
@@ -258,6 +262,7 @@ class VaultData:
             "time_to_close_after_restore": self.time_to_close_after_restore,
             "model_hashes": self.model_hashes,
             "token_abi_version": self.token_abi_version,
+            "self_destruct_on_restore": self.self_destruct_on_restore,
         }
 
     @classmethod
@@ -292,6 +297,7 @@ class VaultData:
             time_to_close_after_restore=data.get("time_to_close_after_restore", []),
             model_hashes=data.get("model_hashes", {}),
             token_abi_version=data.get("token_abi_version", "v1"),
+            self_destruct_on_restore=data.get("self_destruct_on_restore", False),
         )
 
 

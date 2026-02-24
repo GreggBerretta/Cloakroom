@@ -34,7 +34,7 @@ For pilot operators, see `/Users/greggberretta/Documents/New project/cowork-shie
 ```bash
 git clone https://github.com/GreggBerretta/cowork-shield-fork.git
 cd cowork-shield-fork
-git checkout codex/handoff-b-status-doc
+git checkout codex/handoff-b-status-doc-clean
 uv sync --extra dev
 uv run python -m ensurepip
 uv run python -m spacy download en_core_web_lg
@@ -64,6 +64,7 @@ uv run cowork-shield onboarding --workspace default
 
 Onboarding:
 - creates or validates the workspace
+- enforces Free-tier TTL policy (`24h` fixed unless Pro key is provided)
 - exports encrypted recovery key (`0600`) unless disabled
 - writes local first-run completion marker
 
@@ -83,6 +84,12 @@ Wrapper-core invariant check:
 ```bash
 cd wrapper/CoWorkShieldWrapper
 swift run wrapper-invariant-checks
+```
+
+Native menu bar shell (Swift target):
+```bash
+cd wrapper/CoWorkShieldWrapper
+swift run cowork-shield-menubar
 ```
 
 ## Usage Quick Start
@@ -108,6 +115,26 @@ First workspace sanity check:
 ```bash
 uv run cowork-shield workspace list
 uv run cowork-shield workspace show client-a
+```
+
+Vault governance commands:
+```bash
+# Explicit close snapshot backup
+uv run cowork-shield workspace close client-a
+
+# Recover workspace mappings from backup snapshot
+uv run cowork-shield workspace recover --workspace client-a ~/.safeai/backups/<workspace_id>/vault-<timestamp>.enc
+
+# Mandatory-backup purge of mappings/file records
+uv run cowork-shield workspace purge client-a --yes
+
+# Enable/disable self-destruct on restore
+uv run cowork-shield workspace set-governance client-a --self-destruct-on-restore
+uv run cowork-shield workspace set-governance client-a --no-self-destruct-on-restore
+
+# Reports (Free = view, Pro = export)
+uv run cowork-shield workspace report show --workspace client-a
+uv run cowork-shield workspace report export --workspace client-a --format json --output ./client-a-report.json --license-key pro_...
 ```
 
 Spreadsheet column-selective anonymization:
@@ -169,6 +196,12 @@ Clipboard flow:
 uv run cowork-shield shield-clipboard -w client-a
 uv run cowork-shield restore-clipboard -w client-a
 uv run cowork-shield shield-clipboard -w client-a --language he
+```
+
+Performance benchmark gate:
+```bash
+uv run cowork-shield benchmark-performance --rows 10000 --language en --output ./perf-en.json
+uv run cowork-shield benchmark-performance --rows 10000 --language he --output ./perf-he.json
 ```
 
 ## IPC Bridge (Swift Wrapper Hybrid Modes)

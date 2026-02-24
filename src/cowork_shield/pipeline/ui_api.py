@@ -26,6 +26,12 @@ from cowork_shield.exceptions import (
     WorkspaceNotFoundError,
     XLSXContentLossRiskError,
 )
+from cowork_shield.licensing import (
+    DEFAULT_PRICING_URL,
+    FREE_MAX_TTL_HOURS,
+    enforce_license_policy,
+    resolve_license_context,
+)
 from cowork_shield.pipeline.anonymize import AnonymizePipeline
 from cowork_shield.pipeline.columns import inspect_columns
 from cowork_shield.pipeline.restore import RestorePipeline
@@ -81,11 +87,11 @@ def sanitize_ui_error(exc: Exception) -> tuple[str, str]:
     if isinstance(exc, KeychainError):
         return code, "Keychain operation failed. Verify Keychain access and retry."
     if isinstance(exc, LicenseKeyInvalidError):
-        return code, "Invalid license key. Verify the key and retry."
+        return code, f"Invalid license key. Verify the key and retry. Upgrade: {DEFAULT_PRICING_URL}"
     if isinstance(exc, LicenseFeatureError):
-        return code, "This operation requires a Pro license tier."
+        return code, f"This operation requires a Pro license tier. Upgrade: {DEFAULT_PRICING_URL}"
     if isinstance(exc, LicenseLimitExceededError):
-        return code, "Free-tier restore limit reached for today."
+        return code, f"Free-tier restore limit reached for today. Upgrade: {DEFAULT_PRICING_URL}"
     if isinstance(exc, OSError):
         return code, "Filesystem operation failed. Verify path permissions and free disk space."
     return code, "Operation failed. See logs for details."
@@ -132,7 +138,7 @@ def anonymize_file(
     workspace: str,
     *,
     output_path: str | Path | None = None,
-    ttl_hours: int = 168,
+    ttl_hours: int = FREE_MAX_TTL_HOURS,
     score_threshold: float = 0.7,
     language: str = "auto",
     allow_lossy_xlsx: bool = False,
@@ -141,8 +147,25 @@ def anonymize_file(
     detect_pii: bool | None = None,
     force_reanonymize: bool = False,
     reason: str = "",
+    license_key: str = "",
 ) -> UIOperationResult:
     """Run anonymization and return UI-friendly payload."""
+    usage_workspace = _enforce_ui_license(
+        request_type="WORKSPACE_SWITCH",
+        payload={"ttl_hours": ttl_hours},
+        license_key=license_key,
+    )
+    _enforce_ui_license(
+        request_type="ANONYMIZE_FILE",
+        payload={
+            "columns": columns or [],
+            "hebrew_backend": "auto",
+            "detect_pii": bool(detect_pii),
+            "ttl_hours": ttl_hours,
+        },
+        license_key=license_key,
+    )
+
     mgr = WorkspaceManager()
     workspace_created = False
     try:
@@ -196,6 +219,11 @@ def anonymize_file(
             " New workspace created. Export recovery key to avoid unrecoverable key-loss:"
             f" cowork-shield workspace export-key --workspace {workspace} --output ~/.cowork_shield/recovery/{workspace}.recovery.key."
         )
+    if usage_workspace.get("tier") == "FREE":
+        limit = int(usage_workspace.get("free_daily_restore_limit", 5))
+        used = int(usage_workspace.get("free_daily_restores_used", 0))
+        remaining = int(usage_workspace.get("free_daily_restores_remaining", max(0, limit - used)))
+        summary += f" Free tier restore quota: {used}/{limit} used today ({remaining} remaining)."
     return UIOperationResult(
         path=str(result.output_path),
         summary=summary,
@@ -209,8 +237,15 @@ def restore_file(
     workspace: str,
     *,
     output_path: str | Path | None = None,
+    license_key: str = "",
 ) -> UIOperationResult:
     """Run restoration and return UI-friendly payload."""
+    usage = _enforce_ui_license(
+        request_type="RESTORE_FILE",
+        payload={},
+        license_key=license_key,
+    )
+
     mgr = WorkspaceManager()
     ctx = mgr.get_active_workspace(workspace)
 
@@ -223,6 +258,11 @@ def restore_file(
         f"Restored {result.input_path.name} -> {result.output_path.name}. "
         f"Tokens restored: {result.tokens_restored}."
     )
+    if usage.get("tier") == "FREE":
+        limit = int(usage.get("free_daily_restore_limit", 5))
+        used = int(usage.get("free_daily_restores_used", 0))
+        remaining = int(usage.get("free_daily_restores_remaining", max(0, limit - used)))
+        summary += f" Free tier restore quota: {used}/{limit} used today ({remaining} remaining)."
     return UIOperationResult(
         path=str(result.output_path),
         summary=summary,
@@ -328,3 +368,20 @@ def _normalize_columns(columns: str | list[str] | None) -> list[str]:
     if isinstance(columns, str):
         return [part.strip() for part in columns.split(",") if part.strip()]
     return [str(part).strip() for part in columns if str(part).strip()]
+
+
+def _enforce_ui_license(
+    *,
+    request_type: str,
+    payload: dict[str, object],
+    license_key: str,
+) -> dict:
+    merged = dict(payload)
+    if license_key.strip():
+        merged["license_key"] = license_key.strip()
+    context = resolve_license_context(merged)
+    return enforce_license_policy(
+        request_type=request_type,
+        payload=merged,
+        license_context=context,
+    )

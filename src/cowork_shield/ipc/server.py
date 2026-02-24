@@ -37,6 +37,10 @@ from cowork_shield.exceptions import (
     WorkspaceNotFoundError,
     XLSXContentLossRiskError,
 )
+from cowork_shield.governance.reporting import (
+    export_sanitization_reports,
+    read_sanitization_reports,
+)
 from cowork_shield.ipc.framing import recv_frame, send_frame
 from cowork_shield.ipc.protocol import (
     IPCRequest,
@@ -47,7 +51,7 @@ from cowork_shield.ipc.protocol import (
     build_success_response,
 )
 from cowork_shield.logging import configure_logging, log_event
-from cowork_shield.licensing import enforce_license_policy, resolve_license_context
+from cowork_shield.licensing import FREE_MAX_TTL_HOURS, enforce_license_policy, resolve_license_context
 from cowork_shield.pipeline.anonymize import AnonymizePipeline
 from cowork_shield.pipeline.columns import inspect_columns
 from cowork_shield.pipeline.restore import RestorePipeline
@@ -240,6 +244,16 @@ class IPCServer:
             dispatch_result = self._dispatch_stats_query(request)
         elif request_type == "INSPECT_COLUMNS":
             dispatch_result = self._dispatch_inspect_columns(request)
+        elif request_type == "WORKSPACE_CLOSE":
+            dispatch_result = self._dispatch_workspace_close(request)
+        elif request_type == "WORKSPACE_RECOVER":
+            dispatch_result = self._dispatch_workspace_recover(request)
+        elif request_type == "VAULT_PURGE":
+            dispatch_result = self._dispatch_vault_purge(request)
+        elif request_type == "SANITIZATION_REPORT_QUERY":
+            dispatch_result = self._dispatch_sanitization_report_query(request)
+        elif request_type == "SANITIZATION_REPORT_EXPORT":
+            dispatch_result = self._dispatch_sanitization_report_export(request)
         else:
             raise IPCError(f"Unsupported IPC request type: {request.type}")
 
@@ -276,7 +290,7 @@ class IPCServer:
         )
 
     def _dispatch_workspace_switch(self, request: IPCRequest) -> DispatchResult:
-        ttl_hours = int(request.payload.get("ttl_hours", 168))
+        ttl_hours = int(request.payload.get("ttl_hours", FREE_MAX_TTL_HOURS))
         create_if_missing = bool(request.payload.get("create_if_missing", True))
 
         workspace_name = self._resolve_workspace_name(
@@ -503,6 +517,70 @@ class IPCServer:
         # Inspect columns can run without an active workspace.
         return DispatchResult(payload=payload, workspace_version=request.workspace_version)
 
+    def _dispatch_workspace_close(self, request: IPCRequest) -> DispatchResult:
+        workspace_name = self._resolve_workspace_name(request.workspace_id, allow_missing=False)
+        backup_path = self._manager.close_workspace(workspace_name)
+        ctx = self._manager.get_active_workspace(workspace_name)
+        return DispatchResult(
+            payload={
+                "workspace_id": ctx.workspace_id,
+                "workspace_name": workspace_name,
+                "backup_path": str(backup_path),
+            },
+            workspace_version=ctx.vault_data.updated_at,
+        )
+
+    def _dispatch_workspace_recover(self, request: IPCRequest) -> DispatchResult:
+        workspace_name = self._resolve_workspace_name(request.workspace_id, allow_missing=False)
+        backup_path = self._require_str(request.payload, "backup_path")
+        ctx = self._manager.recover_workspace(workspace_name, backup_path)
+        return DispatchResult(
+            payload={
+                "workspace_id": ctx.workspace_id,
+                "workspace_name": workspace_name,
+                "mappings": len(ctx.vault_data.mappings),
+            },
+            workspace_version=ctx.vault_data.updated_at,
+        )
+
+    def _dispatch_vault_purge(self, request: IPCRequest) -> DispatchResult:
+        workspace_name = self._resolve_workspace_name(request.workspace_id, allow_missing=False)
+        backup_path = self._manager.purge_workspace(workspace_name)
+        ctx = self._manager.get_active_workspace(workspace_name)
+        return DispatchResult(
+            payload={
+                "workspace_id": ctx.workspace_id,
+                "workspace_name": workspace_name,
+                "backup_path": str(backup_path),
+                "mappings": len(ctx.vault_data.mappings),
+                "file_records": len(ctx.vault_data.file_records),
+            },
+            workspace_version=ctx.vault_data.updated_at,
+        )
+
+    def _dispatch_sanitization_report_query(self, request: IPCRequest) -> DispatchResult:
+        ctx = self._load_workspace(request, create_if_missing=False)
+        limit = int(request.payload.get("limit", 50))
+        rows = read_sanitization_reports(ctx, limit=limit)
+        return DispatchResult(
+            payload={"rows": rows},
+            workspace_version=ctx.vault_data.updated_at,
+        )
+
+    def _dispatch_sanitization_report_export(self, request: IPCRequest) -> DispatchResult:
+        ctx = self._load_workspace(request, create_if_missing=False)
+        output_path = Path(self._require_str(request.payload, "output_path"))
+        export_format = str(request.payload.get("format", "json")).strip().lower()
+        destination = export_sanitization_reports(
+            ctx,
+            output_path=output_path,
+            fmt=export_format,
+        )
+        return DispatchResult(
+            payload={"output_path": str(destination), "format": export_format},
+            workspace_version=ctx.vault_data.updated_at,
+        )
+
     def _load_workspace(self, request: IPCRequest, *, create_if_missing: bool) -> WorkspaceContext:
         workspace_name = self._resolve_workspace_name(
             request.workspace_id,
@@ -510,7 +588,7 @@ class IPCServer:
         )
 
         if create_if_missing:
-            ttl_hours = int(request.payload.get("ttl_hours", 168))
+            ttl_hours = int(request.payload.get("ttl_hours", FREE_MAX_TTL_HOURS))
             ctx = self._manager.get_or_create_workspace(workspace_name, ttl_hours=ttl_hours)
         else:
             ctx = self._manager.get_active_workspace(workspace_name)

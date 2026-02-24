@@ -40,6 +40,14 @@ public final class WrapperController {
         stateMachine.state
     }
 
+    public var currentWorkspaceID: String {
+        workspaceID
+    }
+
+    public var currentWorkspaceVersion: String {
+        workspaceVersion
+    }
+
     public func beginOperation(name: String) throws {
         _ = try stateMachine.transition(.beginOperation(name: name))
     }

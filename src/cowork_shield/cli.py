@@ -19,6 +19,10 @@ from cowork_shield.clipboard.operations import (
     shield_clipboard,
 )
 from cowork_shield.detection.engine import HEBREW_BACKEND_CHOICES, LANGUAGE_CHOICES
+from cowork_shield.governance.reporting import (
+    export_sanitization_reports,
+    read_sanitization_reports,
+)
 from cowork_shield.handlers.column_select import parse_columns_option
 from cowork_shield.ipc.server import IPCServer
 from cowork_shield.ipc.stdio_server import main as stdio_server_main
@@ -32,10 +36,21 @@ from cowork_shield.logging import (
     read_audit_events,
 )
 from cowork_shield.exceptions import CoWorkShieldError
+from cowork_shield.exceptions import LicenseFeatureError
+from cowork_shield.exceptions import LicenseKeyInvalidError
+from cowork_shield.exceptions import LicenseLimitExceededError
 from cowork_shield.exceptions import WorkspaceNotFoundError
+from cowork_shield.licensing import (
+    DEFAULT_PRICING_URL,
+    FREE_MAX_TTL_HOURS,
+    PRO_MAX_TTL_HOURS,
+    enforce_license_policy,
+    resolve_license_context,
+)
 from cowork_shield.pipeline.anonymize import AnonymizePipeline
 from cowork_shield.pipeline.columns import inspect_columns
 from cowork_shield.pipeline.restore import RestorePipeline
+from cowork_shield.performance import run_csv_clipboard_benchmark, write_benchmark_result_json
 from cowork_shield.vault.keychain import (
     get_master_key,
     store_master_key,
@@ -62,6 +77,35 @@ def _show_error(exc: Exception) -> None:
         exc=exc,
     )
     console.print(f"[bold red]Error [{code}]:[/] {exc}")
+    if isinstance(exc, (LicenseFeatureError, LicenseKeyInvalidError, LicenseLimitExceededError)):
+        console.print(f"[yellow]Upgrade:[/] {DEFAULT_PRICING_URL}")
+
+
+def _enforce_license(
+    *,
+    request_type: str,
+    payload: dict | None = None,
+    license_key: str = "",
+) -> tuple[dict, str]:
+    payload_data = dict(payload or {})
+    if license_key.strip():
+        payload_data["license_key"] = license_key.strip()
+    context = resolve_license_context(payload_data)
+    usage = enforce_license_policy(
+        request_type=request_type,
+        payload=payload_data,
+        license_context=context,
+    )
+    return usage, context.tier
+
+
+def _print_restore_counter(usage: dict) -> None:
+    if usage.get("tier") != "FREE":
+        return
+    used = int(usage.get("free_daily_restores_used", 0))
+    remaining = int(usage.get("free_daily_restores_remaining", 0))
+    limit = int(usage.get("free_daily_restore_limit", 5))
+    console.print(f"  Free Tier:  {used} of {limit} restores used today ({remaining} remaining)")
 
 
 def _resolve_passphrase(passphrase: str | None, *, confirm: bool) -> str:
@@ -86,7 +130,7 @@ def _get_or_create_workspace_with_warning(
     mgr: WorkspaceManager,
     name: str,
     *,
-    ttl_hours: int = 168,
+    ttl_hours: int = FREE_MAX_TTL_HOURS,
 ):
     existed = _workspace_exists(mgr, name)
     ctx = mgr.get_or_create_workspace(name, ttl_hours=ttl_hours)
@@ -194,9 +238,9 @@ def main(ctx, verbose, no_logging, encrypt_logs):
 @click.option(
     "--ttl",
     type=int,
-    default=168,
+    default=FREE_MAX_TTL_HOURS,
     show_default=True,
-    help="Workspace TTL in hours.",
+    help=f"Workspace TTL in hours (Free fixed at {FREE_MAX_TTL_HOURS}h, Pro up to {PRO_MAX_TTL_HOURS}h).",
 )
 @click.option(
     "--export-key/--no-export-key",
@@ -216,14 +260,30 @@ def main(ctx, verbose, no_logging, encrypt_logs):
     default=None,
     help="Passphrase for recovery key export (prompted if omitted).",
 )
-def onboarding_cmd(workspace, ttl, export_key, output_path, passphrase):
+@click.option(
+    "--license-key",
+    default="",
+    help="Optional Pro license key for governance features.",
+)
+def onboarding_cmd(workspace, ttl, export_key, output_path, passphrase, license_key):
     """Run first-run onboarding wizard for pilot users."""
     try:
+        usage, tier = _enforce_license(
+            request_type="WORKSPACE_SWITCH",
+            payload={"ttl_hours": ttl},
+            license_key=license_key,
+        )
         mgr = WorkspaceManager()
         ctx, _created = _get_or_create_workspace_with_warning(mgr, workspace, ttl_hours=ttl)
         console.print("[green]Workspace ready.[/]")
         console.print(f"  Workspace: {ctx.workspace_name}")
         console.print(f"  ID:        {ctx.workspace_id}")
+        console.print(f"  License:   {tier}")
+        if usage.get("tier") == "FREE":
+            console.print(
+                f"  TTL:       {FREE_MAX_TTL_HOURS}h fixed on Free tier. "
+                f"Upgrade for configurable TTL up to {PRO_MAX_TTL_HOURS}h."
+            )
 
         if export_key:
             destination = (
@@ -490,8 +550,8 @@ def logs_delete(workspace_name, all_audits, yes):
     help="Workspace name for identity sharing across files",
 )
 @click.option(
-    "--ttl", type=int, default=168,
-    help="Vault TTL in hours (default: 168 = 7 days)",
+    "--ttl", type=int, default=FREE_MAX_TTL_HOURS,
+    help=f"Vault TTL in hours (Free fixed at {FREE_MAX_TTL_HOURS}h; Pro up to {PRO_MAX_TTL_HOURS}h).",
 )
 @click.option(
     "--score-threshold", type=float, default=0.7,
@@ -563,6 +623,12 @@ def logs_delete(workspace_name, all_audits, yes):
     default="",
     help="Audit reason for --force-reanonymize.",
 )
+@click.option(
+    "--license-key",
+    type=str,
+    default="",
+    help="Optional Pro license key.",
+)
 def anonymize(
     file,
     output,
@@ -579,6 +645,7 @@ def anonymize(
     detect_pii,
     force_reanonymize,
     reason,
+    license_key,
 ):
     """Anonymize PII in a document.
 
@@ -614,6 +681,12 @@ def anonymize(
                 "--force-reanonymize requires --reason for audit logging."
             )
 
+        usage_workspace, license_tier = _enforce_license(
+            request_type="WORKSPACE_SWITCH",
+            payload={"ttl_hours": ttl},
+            license_key=license_key,
+        )
+
         mgr = WorkspaceManager()
         ctx, _created = _get_or_create_workspace_with_warning(mgr, workspace, ttl_hours=ttl)
 
@@ -626,6 +699,16 @@ def anonymize(
                 "[bold yellow]PDF input warning:[/] "
                 "This will output [bold].md[/] or [bold].docx[/], not a reconstructed PDF."
             )
+
+        _enforce_license(
+            request_type="ANONYMIZE_FILE",
+            payload={
+                "columns": selected_columns,
+                "hebrew_backend": hebrew_backend.lower(),
+                "ttl_hours": ttl,
+            },
+            license_key=license_key,
+        )
 
         pipeline = AnonymizePipeline(
             ctx,
@@ -656,12 +739,14 @@ def anonymize(
             except CoWorkShieldError:
                 pass
 
-        result = pipeline.run(input_path, output_path)
+        with console.status("Anonymizing...", spinner="dots"):
+            result = pipeline.run(input_path, output_path)
 
         console.print()
         console.print(f"[bold green]Anonymized[/] {result.input_path.name}")
         console.print(f"  Output:    {result.output_path}")
         console.print(f"  Workspace: {result.workspace_name}")
+        console.print(f"  License:   {license_tier}")
         console.print(f"  Entities:  {result.entities_found} detected")
         console.print(f"  Tokens:    {result.tokens_applied} applied")
         if selected_columns:
@@ -676,6 +761,11 @@ def anonymize(
             console.print(
                 "  Note:      [yellow]PDF is input-only[/]. Output is extracted "
                 "Markdown/DOCX and original PDF layout is not reconstructed."
+            )
+        if usage_workspace.get("tier") == "FREE":
+            console.print(
+                f"  TTL:       {FREE_MAX_TTL_HOURS}h fixed on Free tier "
+                f"(Pro up to {PRO_MAX_TTL_HOURS}h)"
             )
         console.print()
         log_event(
@@ -744,7 +834,13 @@ def inspect_columns_cmd(file):
     "-w", "--workspace", type=str, default="default",
     help="Workspace to restore from",
 )
-def restore(file, output, workspace):
+@click.option(
+    "--license-key",
+    type=str,
+    default="",
+    help="Optional Pro license key.",
+)
+def restore(file, output, workspace, license_key):
     """Restore an anonymized document to its original form.
 
     Reads the encrypted vault, verifies all HMAC tags, replaces
@@ -766,6 +862,11 @@ def restore(file, output, workspace):
             "Restore command started",
             metadata={"file_path": str(file), "workspace": workspace},
         )
+        usage, license_tier = _enforce_license(
+            request_type="RESTORE_FILE",
+            payload={},
+            license_key=license_key,
+        )
         mgr = WorkspaceManager()
         ctx = mgr.get_active_workspace(workspace)
 
@@ -773,14 +874,17 @@ def restore(file, output, workspace):
         output_path = Path(output) if output else None
 
         pipeline = RestorePipeline(ctx)
-        result = pipeline.run(input_path, output_path)
+        with console.status("Restoring...", spinner="dots"):
+            result = pipeline.run(input_path, output_path)
 
         console.print()
         console.print(f"[bold green]Restored[/] {result.input_path.name}")
         console.print(f"  Output:       {result.output_path}")
         console.print(f"  Workspace:    {result.workspace_name}")
+        console.print(f"  License:      {license_tier}")
         console.print(f"  Tokens:       {result.tokens_restored} restored")
         console.print("  Verification: [green]PASSED[/]")
+        _print_restore_counter(usage)
         console.print()
         log_event(
             "cli",
@@ -795,6 +899,131 @@ def restore(file, output, workspace):
             },
         )
 
+    except CoWorkShieldError as e:
+        _show_error(e)
+        raise SystemExit(1)
+
+
+@main.command("benchmark-performance")
+@click.option(
+    "-w",
+    "--workspace",
+    default="perf-benchmark",
+    show_default=True,
+    help="Workspace name used for benchmark execution.",
+)
+@click.option(
+    "--rows",
+    type=int,
+    default=10_000,
+    show_default=True,
+    help="Number of CSV rows for benchmark corpus.",
+)
+@click.option(
+    "--language",
+    type=click.Choice(["en", "he"], case_sensitive=False),
+    default="en",
+    show_default=True,
+    help="Benchmark language mode.",
+)
+@click.option(
+    "-o",
+    "--output",
+    "output_path",
+    type=click.Path(),
+    default=str(Path.home() / ".cowork_shield" / "performance" / "latest.json"),
+    show_default=True,
+    help="JSON output path for benchmark metrics.",
+)
+@click.option(
+    "--enforce-gates",
+    is_flag=True,
+    help="Return non-zero if launch performance thresholds are not met.",
+)
+@click.option(
+    "--license-key",
+    default="",
+    help="Optional Pro license key.",
+)
+def benchmark_performance_cmd(
+    workspace,
+    rows,
+    language,
+    output_path,
+    enforce_gates,
+    license_key,
+):
+    """Run launch performance benchmark for CSV + clipboard flows."""
+    try:
+        if rows < 100:
+            raise click.UsageError("--rows must be >= 100 for meaningful benchmark results.")
+
+        _enforce_license(
+            request_type="WORKSPACE_SWITCH",
+            payload={"ttl_hours": FREE_MAX_TTL_HOURS},
+            license_key=license_key,
+        )
+
+        mgr = WorkspaceManager()
+        ctx, _created = _get_or_create_workspace_with_warning(
+            mgr,
+            workspace,
+            ttl_hours=FREE_MAX_TTL_HOURS,
+        )
+
+        with console.status("Running benchmark...", spinner="dots"):
+            result = run_csv_clipboard_benchmark(
+                ctx,
+                rows=rows,
+                language=language.lower(),
+            )
+
+        json_path = write_benchmark_result_json(
+            result,
+            output_path=Path(output_path),
+        )
+
+        thresholds = {
+            "anonymize_seconds": 8.0,
+            "restore_seconds": 2.0,
+            "clipboard_roundtrip_seconds": 1.5,
+        }
+        checks = {
+            "anonymize_seconds": result.anonymize_seconds <= thresholds["anonymize_seconds"],
+            "restore_seconds": result.restore_seconds <= thresholds["restore_seconds"],
+            "clipboard_roundtrip_seconds": (
+                result.clipboard_roundtrip_seconds <= thresholds["clipboard_roundtrip_seconds"]
+            ),
+        }
+
+        console.print("[bold]Performance Benchmark[/]")
+        console.print(f"  Captured:   {result.captured_at}")
+        console.print(f"  Workspace:  {result.workspace_name}")
+        console.print(f"  Language:   {result.language}")
+        console.print(f"  Rows:       {result.rows}")
+        console.print(f"  Anonymize:  {result.anonymize_seconds:.2f}s (target <= 8.00s)")
+        console.print(f"  Restore:    {result.restore_seconds:.2f}s (target <= 2.00s)")
+        console.print(
+            f"  Clipboard:  {result.clipboard_roundtrip_seconds:.2f}s round-trip "
+            "(target <= 1.50s)"
+        )
+        console.print(f"  Output:     {json_path}")
+
+        if all(checks.values()):
+            console.print("[green]Gate: PASS[/]")
+            return
+
+        console.print("[red]Gate: FAIL[/]")
+        for key, passed in checks.items():
+            if passed:
+                continue
+            console.print(f"  - {key} exceeded threshold.")
+        if enforce_gates:
+            raise SystemExit(1)
+
+    except click.ClickException as e:
+        _show_error(e)
+        raise SystemExit(1)
     except CoWorkShieldError as e:
         _show_error(e)
         raise SystemExit(1)
@@ -849,6 +1078,12 @@ def restore(file, output, workspace):
     default="",
     help="Audit reason for --force-reanonymize.",
 )
+@click.option(
+    "--license-key",
+    type=str,
+    default="",
+    help="Optional Pro license key.",
+)
 def shield_clipboard_cmd(
     workspace,
     score_threshold,
@@ -858,6 +1093,7 @@ def shield_clipboard_cmd(
     hebrew_transformer_model,
     force_reanonymize,
     reason,
+    license_key,
 ):
     """Anonymize current clipboard contents in place.
 
@@ -877,28 +1113,46 @@ def shield_clipboard_cmd(
                 "--force-reanonymize requires --reason for audit logging."
             )
 
+        usage_workspace, license_tier = _enforce_license(
+            request_type="WORKSPACE_SWITCH",
+            payload={"ttl_hours": FREE_MAX_TTL_HOURS},
+            license_key=license_key,
+        )
+        _enforce_license(
+            request_type="CLIPBOARD_ANONYMIZE",
+            payload={"hebrew_backend": hebrew_backend.lower()},
+            license_key=license_key,
+        )
+
         mgr = WorkspaceManager()
         ctx, _created = _get_or_create_workspace_with_warning(mgr, workspace)
 
-        result = shield_clipboard(
-            ctx,
-            score_threshold=score_threshold,
-            language=language.lower(),
-            hebrew_backend=hebrew_backend.lower(),
-            hebrew_stanza_model=hebrew_stanza_model.strip(),
-            hebrew_transformer_model=hebrew_transformer_model.strip(),
-            force_reanonymize=force_reanonymize,
-            override_reason=reason,
-            override_user=getpass.getuser(),
-        )
+        with console.status("Shielding clipboard...", spinner="dots"):
+            result = shield_clipboard(
+                ctx,
+                score_threshold=score_threshold,
+                language=language.lower(),
+                hebrew_backend=hebrew_backend.lower(),
+                hebrew_stanza_model=hebrew_stanza_model.strip(),
+                hebrew_transformer_model=hebrew_transformer_model.strip(),
+                force_reanonymize=force_reanonymize,
+                override_reason=reason,
+                override_user=getpass.getuser(),
+            )
 
         console.print()
         console.print("[bold green]Clipboard anonymized[/]")
         console.print(f"  Workspace: {workspace}")
+        console.print(f"  License:   {license_tier}")
         console.print(f"  Entities:  {result.entities_found} detected")
         console.print(f"  Tokens:    {result.tokens_applied} applied")
         if force_reanonymize:
             console.print(f"  Override:  [yellow]ON[/] ({reason.strip()})")
+        if usage_workspace.get("tier") == "FREE":
+            console.print(
+                f"  TTL:       {FREE_MAX_TTL_HOURS}h fixed on Free tier "
+                f"(Pro up to {PRO_MAX_TTL_HOURS}h)"
+            )
         console.print()
         log_event(
             "cli",
@@ -922,7 +1176,13 @@ def shield_clipboard_cmd(
     "-w", "--workspace", type=str, default="default",
     help="Workspace to restore from",
 )
-def restore_clipboard_cmd(workspace):
+@click.option(
+    "--license-key",
+    type=str,
+    default="",
+    help="Optional Pro license key.",
+)
+def restore_clipboard_cmd(workspace, license_key):
     """Restore tokenized clipboard contents in place."""
     try:
         log_event(
@@ -932,16 +1192,24 @@ def restore_clipboard_cmd(workspace):
             "Clipboard restore started",
             metadata={"workspace": workspace},
         )
+        usage, license_tier = _enforce_license(
+            request_type="CLIPBOARD_RESTORE",
+            payload={},
+            license_key=license_key,
+        )
         mgr = WorkspaceManager()
         ctx = mgr.get_active_workspace(workspace)
 
-        result = restore_clipboard(ctx)
+        with console.status("Restoring clipboard...", spinner="dots"):
+            result = restore_clipboard(ctx)
 
         console.print()
         console.print("[bold green]Clipboard restored[/]")
         console.print(f"  Workspace:    {workspace}")
+        console.print(f"  License:      {license_tier}")
         console.print(f"  Tokens:       {result.tokens_restored} restored")
         console.print("  Verification: [green]PASSED[/]")
+        _print_restore_counter(usage)
         console.print()
         log_event(
             "cli",
@@ -1067,6 +1335,10 @@ def workspace_show(name, show_mappings, show_audit):
         console.print(f"  Created:  {ctx.vault_data.created_at}")
         console.print(f"  Updated:  {ctx.vault_data.updated_at}")
         console.print(f"  TTL:      {ctx.vault_data.ttl_hours}h")
+        console.print(
+            f"  Self-Destruct on Restore: "
+            f"{'enabled' if ctx.vault_data.self_destruct_on_restore else 'disabled'}"
+        )
         console.print(f"  Mappings: {len(ctx.vault_data.mappings)}")
         console.print(f"  Files:    {len(ctx.vault_data.file_records)}")
 
@@ -1356,6 +1628,186 @@ def workspace_import_key(workspace_name, input_path, passphrase, force):
     except click.ClickException as e:
         _show_error(e)
         raise SystemExit(1)
+    except CoWorkShieldError as e:
+        _show_error(e)
+        raise SystemExit(1)
+
+
+@workspace_group.command("close")
+@click.argument("name")
+def workspace_close(name):
+    """Explicitly close workspace and create one encrypted vault backup snapshot."""
+    try:
+        mgr = WorkspaceManager()
+        backup_path = mgr.close_workspace(name)
+        console.print("[green]Workspace closed with backup snapshot.[/]")
+        console.print(f"  Workspace: {name}")
+        console.print(f"  Backup:    {backup_path}")
+    except CoWorkShieldError as e:
+        _show_error(e)
+        raise SystemExit(1)
+
+
+@workspace_group.command("recover")
+@click.option(
+    "-w", "--workspace", "workspace_name", required=True,
+    help="Workspace name to recover.",
+)
+@click.argument("backup_path", type=click.Path(exists=True))
+def workspace_recover(workspace_name, backup_path):
+    """Recover workspace mappings from a vault backup snapshot."""
+    try:
+        mgr = WorkspaceManager()
+        ctx = mgr.recover_workspace(workspace_name, backup_path)
+        console.print("[green]Workspace recovered from backup.[/]")
+        console.print(f"  Workspace: {ctx.workspace_name}")
+        console.print(f"  Backup:    {Path(backup_path).expanduser().resolve()}")
+        console.print(f"  Mappings:  {len(ctx.vault_data.mappings)}")
+    except CoWorkShieldError as e:
+        _show_error(e)
+        raise SystemExit(1)
+
+
+@workspace_group.command("purge")
+@click.argument("name")
+@click.option("--yes", is_flag=True, help="Skip confirmation prompt.")
+def workspace_purge(name, yes):
+    """Purge vault mappings after mandatory encrypted backup snapshot."""
+    try:
+        if not yes:
+            click.confirm(
+                f"Purge workspace '{name}' mappings? A backup will be created first.",
+                abort=True,
+            )
+        mgr = WorkspaceManager()
+        backup_path = mgr.purge_workspace(name)
+        console.print("[green]Workspace purged.[/]")
+        console.print(f"  Workspace: {name}")
+        console.print(f"  Backup:    {backup_path}")
+        console.print("  Result:    Vault mappings cleared.")
+    except click.Abort:
+        console.print("Cancelled.")
+    except CoWorkShieldError as e:
+        _show_error(e)
+        raise SystemExit(1)
+
+
+@workspace_group.command("set-governance")
+@click.argument("name")
+@click.option(
+    "--self-destruct-on-restore/--no-self-destruct-on-restore",
+    default=None,
+    help="Toggle automatic workspace mapping purge after each successful restore.",
+)
+def workspace_set_governance(name, self_destruct_on_restore):
+    """Update workspace governance controls."""
+    try:
+        if self_destruct_on_restore is None:
+            raise click.UsageError(
+                "Specify either --self-destruct-on-restore or --no-self-destruct-on-restore."
+            )
+        mgr = WorkspaceManager()
+        ctx = mgr.set_self_destruct_on_restore(name, bool(self_destruct_on_restore))
+        console.print("[green]Workspace governance updated.[/]")
+        console.print(f"  Workspace: {ctx.workspace_name}")
+        console.print(
+            "  Self-Destruct on Restore: "
+            + ("enabled" if ctx.vault_data.self_destruct_on_restore else "disabled")
+        )
+    except click.ClickException as e:
+        _show_error(e)
+        raise SystemExit(1)
+    except CoWorkShieldError as e:
+        _show_error(e)
+        raise SystemExit(1)
+
+
+@workspace_group.group("report")
+def workspace_report_group():
+    """View/export auditor-safe sanitization reports."""
+    pass
+
+
+@workspace_report_group.command("show")
+@click.option("-w", "--workspace", "workspace_name", required=True, help="Workspace name.")
+@click.option("--limit", type=int, default=20, show_default=True, help="Rows to display.")
+def workspace_report_show(workspace_name, limit):
+    """Show latest sanitization report rows for a workspace."""
+    try:
+        mgr = WorkspaceManager()
+        ctx = mgr.get_active_workspace(workspace_name)
+        rows = read_sanitization_reports(ctx, limit=limit)
+        if not rows:
+            console.print("[yellow]No sanitization reports found.[/]")
+            return
+
+        table = Table(title=f"Sanitization Reports ({ctx.workspace_name})")
+        table.add_column("Timestamp", style="cyan")
+        table.add_column("Operation", style="white")
+        table.add_column("File", style="dim")
+        table.add_column("Duration (ms)", justify="right")
+        table.add_column("Entities", justify="right")
+        table.add_column("Counts", style="magenta")
+
+        for row in rows:
+            counts = row.get("entity_counts", {})
+            count_text = ", ".join(f"{k}:{v}" for k, v in counts.items())[:120]
+            table.add_row(
+                str(row.get("timestamp", "")),
+                str(row.get("operation", "")),
+                str(row.get("file_ext", "")),
+                str(row.get("duration_ms", "")),
+                str(row.get("entities_total", "")),
+                count_text,
+            )
+        console.print(table)
+    except CoWorkShieldError as e:
+        _show_error(e)
+        raise SystemExit(1)
+
+
+@workspace_report_group.command("export")
+@click.option("-w", "--workspace", "workspace_name", required=True, help="Workspace name.")
+@click.option(
+    "-o",
+    "--output",
+    "output_path",
+    type=click.Path(),
+    required=True,
+    help="Output path for report export (.json or .pdf).",
+)
+@click.option(
+    "--format",
+    "export_format",
+    type=click.Choice(["json", "pdf"], case_sensitive=False),
+    default="json",
+    show_default=True,
+    help="Export format.",
+)
+@click.option(
+    "--license-key",
+    default="",
+    help="Pro license key required for report export.",
+)
+def workspace_report_export(workspace_name, output_path, export_format, license_key):
+    """Export sanitization reports (Pro only)."""
+    try:
+        _enforce_license(
+            request_type="WORKSPACE_EXPORT_AUDIT_SUMMARY",
+            payload={},
+            license_key=license_key,
+        )
+        mgr = WorkspaceManager()
+        ctx = mgr.get_active_workspace(workspace_name)
+        destination = export_sanitization_reports(
+            ctx,
+            output_path=Path(output_path),
+            fmt=export_format.lower(),
+        )
+        console.print("[green]Sanitization report exported.[/]")
+        console.print(f"  Workspace: {workspace_name}")
+        console.print(f"  Output:    {destination}")
+        console.print(f"  Format:    {export_format.lower()}")
     except CoWorkShieldError as e:
         _show_error(e)
         raise SystemExit(1)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging as py_logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -13,6 +14,10 @@ from cowork_shield.exceptions import (
     IntegrityError,
     PdfInputOnlyError,
     UnsupportedFormatError,
+)
+from cowork_shield.governance.reporting import (
+    append_sanitization_report,
+    build_restore_entity_counts,
 )
 from cowork_shield.hallucination.detector import detect_token_anomalies
 from cowork_shield.hallucination.formatter import format_hallucination_flags
@@ -146,10 +151,24 @@ class RestorePipeline:
                 self._ctx.vault_data.last_used = now_iso()
                 self._ctx.persist()
 
+                self_destruct_enabled = bool(self._ctx.vault_data.self_destruct_on_restore)
+                if self_destruct_enabled:
+                    self._ctx.token_generator.load_state({}, {})
+                    self._ctx.vault_data.mappings = {}
+                    self._ctx.vault_data.token_counter = {}
+                    self._ctx.vault_data.file_records = []
+                    self._ctx.vault_data.last_used = now_iso()
+                    self._ctx.persist()
+                    append_audit_event(
+                        self._ctx,
+                        event="workspace_self_destruct_after_restore",
+                        fields={"file_path": str(input_path)},
+                    )
+
                 duration_ms = int((perf_counter() - started) * 1000)
                 log_event(
                     "engine",
-                    level=20,
+                    level=py_logging.INFO,
                     event="restore_complete",
                     message="Restore complete",
                     workspace_id=self._ctx.workspace_id,
@@ -159,6 +178,7 @@ class RestorePipeline:
                         "duration_ms": duration_ms,
                         "tokens_restored": len(active_tokens),
                         "integrity_check": True,
+                        "self_destruct_on_restore": self_destruct_enabled,
                     },
                 )
                 append_audit_event(
@@ -172,6 +192,42 @@ class RestorePipeline:
                     },
                 )
 
+                try:
+                    token_type_map = {
+                        mapping.token.token_text: mapping.entity_type
+                        for mapping in all_mappings.values()
+                    }
+                    token_original_map = {
+                        mapping.token.token_text: mapping.original_value
+                        for mapping in all_mappings.values()
+                    }
+                    append_sanitization_report(
+                        self._ctx,
+                        operation="restore",
+                        file_path=str(input_path),
+                        file_ext=suffix,
+                        duration_ms=duration_ms,
+                        language="auto",
+                        entity_counts=build_restore_entity_counts(
+                            token_texts=active_tokens,
+                            token_to_entity_type=token_type_map,
+                            token_to_original=token_original_map,
+                        ),
+                        entities_total=len(active_tokens),
+                        tokens_restored=len(active_tokens),
+                        metadata={"self_destruct_on_restore": self_destruct_enabled},
+                    )
+                except Exception as report_exc:  # noqa: BLE001
+                    log_event(
+                        "engine",
+                        level=py_logging.WARNING,
+                        event="sanitization_report_failed",
+                        message="Failed to append sanitization report",
+                        workspace_id=self._ctx.workspace_id,
+                        metadata={"file_path": str(input_path)},
+                        exc=report_exc,
+                    )
+
                 return RestoreResult(
                     input_path=input_path,
                     output_path=output_path,
@@ -182,7 +238,7 @@ class RestorePipeline:
         except Exception as exc:
             log_event(
                 "engine",
-                level=40,
+                level=py_logging.ERROR,
                 event="restore_failed",
                 message="Restore failed",
                 workspace_id=self._ctx.workspace_id,

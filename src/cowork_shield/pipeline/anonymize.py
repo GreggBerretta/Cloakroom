@@ -16,6 +16,10 @@ from cowork_shield.exceptions import (
     ReplayMismatchError,
     UnsupportedFormatError,
 )
+from cowork_shield.governance.reporting import (
+    append_sanitization_report,
+    build_anonymize_entity_counts,
+)
 from cowork_shield.handlers.csv_handler import CsvHandler
 from cowork_shield.handlers.docx import DocxHandler
 from cowork_shield.handlers.pdf_handler import PdfHandler
@@ -283,6 +287,37 @@ class AnonymizePipeline:
                             "reason": self._override_reason,
                             "file_path": str(input_path),
                         },
+                    )
+
+                try:
+                    append_sanitization_report(
+                        self._ctx,
+                        operation="anonymize",
+                        file_path=str(input_path),
+                        file_ext=suffix,
+                        duration_ms=duration_ms,
+                        language=self._language,
+                        entity_counts=build_anonymize_entity_counts(
+                            records,
+                            language=self._language,
+                        ),
+                        entities_total=file_record.entities_found,
+                        tokens_applied=file_record.tokens_applied,
+                        metadata={
+                            "detect_pii": self._detect_pii,
+                            "selected_columns_count": len(self._selected_columns),
+                            "pdf_output_format": self._pdf_output_format,
+                        },
+                    )
+                except Exception as report_exc:  # noqa: BLE001
+                    log_event(
+                        "engine",
+                        level=py_logging.WARNING,
+                        event="sanitization_report_failed",
+                        message="Failed to append sanitization report",
+                        workspace_id=self._ctx.workspace_id,
+                        metadata={"file_path": str(input_path)},
+                        exc=report_exc,
                     )
 
                 return AnonymizeResult(

@@ -19,14 +19,20 @@ from cowork_shield.exceptions import (
 )
 
 FREE_RESTORE_DAILY_LIMIT = 5
-FREE_MAX_TTL_HOURS = 168
+FREE_MAX_TTL_HOURS = 24
+PRO_MAX_TTL_HOURS = 720
 PRO_TIER = "PRO"
 FREE_TIER = "FREE"
+DEFAULT_PRICING_URL = "https://coworkshield.ai/pricing"
 
 LICENSE_USAGE_PATH = Path.home() / ".cowork-shield" / "license_usage.json"
 _USAGE_LOCK = threading.Lock()
 _PRO_KEY_PATTERN = re.compile(r"^pro_[A-Za-z0-9]{16,}$")
-_AUDIT_EXPORT_REQUEST_TYPES = {"AUDIT_EXPORT", "WORKSPACE_EXPORT_AUDIT_SUMMARY"}
+_AUDIT_EXPORT_REQUEST_TYPES = {
+    "AUDIT_EXPORT",
+    "WORKSPACE_EXPORT_AUDIT_SUMMARY",
+    "SANITIZATION_REPORT_EXPORT",
+}
 
 
 @dataclass(frozen=True)
@@ -74,6 +80,7 @@ def enforce_license_policy(
     usage: dict[str, Any] = {
         "tier": license_context.tier,
         "free_daily_restore_limit": FREE_RESTORE_DAILY_LIMIT,
+        "pricing_url": DEFAULT_PRICING_URL,
     }
     operation = request_type.upper()
 
@@ -84,7 +91,13 @@ def enforce_license_policy(
     if operation in _AUDIT_EXPORT_REQUEST_TYPES:
         _require_pro(license_context, feature="audit export")
     if operation in {"RESTORE_FILE", "CLIPBOARD_RESTORE"} and not license_context.is_pro:
-        usage["free_daily_restores_used"] = _consume_free_restore_credit()
+        used = _consume_free_restore_credit()
+        usage["free_daily_restores_used"] = used
+        usage["free_daily_restores_remaining"] = FREE_RESTORE_DAILY_LIMIT - used
+    elif not license_context.is_pro:
+        used = _current_free_restore_credits()
+        usage["free_daily_restores_used"] = used
+        usage["free_daily_restores_remaining"] = max(0, FREE_RESTORE_DAILY_LIMIT - used)
 
     return usage
 
@@ -123,8 +136,19 @@ def _enforce_ttl_policy(payload: dict[str, Any], *, license_context: LicenseCont
     except (TypeError, ValueError) as exc:
         raise LicenseFeatureError("'ttl_hours' must be an integer") from exc
 
-    if ttl_hours > FREE_MAX_TTL_HOURS:
-        _require_pro(license_context, feature="long TTL workspace")
+    if ttl_hours < 1:
+        raise LicenseFeatureError("'ttl_hours' must be >= 1")
+
+    if not license_context.is_pro and ttl_hours != FREE_MAX_TTL_HOURS:
+        raise LicenseFeatureError(
+            f"Free tier TTL is fixed at {FREE_MAX_TTL_HOURS}h. "
+            "Upgrade to Pro for configurable TTL (up to 30 days)."
+        )
+
+    if license_context.is_pro and ttl_hours > PRO_MAX_TTL_HOURS:
+        raise LicenseFeatureError(
+            f"Pro TTL cannot exceed {PRO_MAX_TTL_HOURS}h (30 days)."
+        )
 
 
 def _require_pro(license_context: LicenseContext, *, feature: str) -> None:
@@ -162,6 +186,14 @@ def _consume_free_restore_credit() -> int:
         return current
 
 
+def _current_free_restore_credits() -> int:
+    today = datetime.now(timezone.utc).date().isoformat()
+    with _USAGE_LOCK:
+        usage = _load_usage()
+        restore_counts = usage.setdefault("free_restore_counts", {})
+        return int(restore_counts.get(today, 0))
+
+
 def _load_usage() -> dict[str, Any]:
     if not LICENSE_USAGE_PATH.exists():
         return {}
@@ -179,4 +211,3 @@ def _save_usage(payload: dict[str, Any]) -> None:
     tmp_path = LICENSE_USAGE_PATH.with_suffix(".tmp")
     tmp_path.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
     os.replace(tmp_path, LICENSE_USAGE_PATH)
-

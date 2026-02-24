@@ -59,5 +59,5 @@ def _migrate_1_0_to_2_0(data: dict) -> dict:
 
     # Token format version
     migrated.setdefault("token_abi_version", "v1")
-
+    migrated.setdefault("self_destruct_on_restore", False)
     return migrated

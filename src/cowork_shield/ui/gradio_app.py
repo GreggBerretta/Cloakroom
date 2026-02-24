@@ -60,6 +60,7 @@ def shield(
     override_reason,
     confirm_risky_operation,
     confirm_pdf_output,
+    license_key="",
 ):
     if uploaded_file is None:
         return None, "<p><strong>No file uploaded.</strong></p>", "No file uploaded."
@@ -102,6 +103,7 @@ def shield(
             allow_lossy_xlsx=bool(allow_lossy_xlsx),
             force_reanonymize=bool(force_reanonymize),
             reason=reason,
+            license_key=(license_key or "").strip(),
         )
         return result.path, result.entity_table_html, result.summary
     except (CoWorkShieldError, OSError) as exc:
@@ -109,7 +111,7 @@ def shield(
         return None, "<p><strong>Failed to anonymize.</strong></p>", f"{code}: {message}"
 
 
-def restore(uploaded_file, workspace):
+def restore(uploaded_file, workspace, license_key=""):
     if uploaded_file is None:
         return None, "No file uploaded."
 
@@ -117,7 +119,11 @@ def restore(uploaded_file, workspace):
     input_path = Path(uploaded_file.name)
 
     try:
-        result = restore_file(input_path, workspace_name)
+        result = restore_file(
+            input_path,
+            workspace_name,
+            license_key=(license_key or "").strip(),
+        )
         return result.path, result.summary
     except (CoWorkShieldError, OSError) as exc:
         code, message = sanitize_ui_error(exc)
@@ -184,6 +190,11 @@ def create_demo() -> gr.Blocks:
                 label="Override reason (required when force re-anonymize is enabled)",
                 placeholder="Required for audited force override",
             )
+            license_key = gr.Textbox(
+                label="License key (optional)",
+                placeholder="pro_...",
+                type="password",
+            )
             confirm_risky_operation = gr.Checkbox(
                 label="I confirm I want to proceed with risky overrides",
                 value=False,
@@ -218,6 +229,7 @@ def create_demo() -> gr.Blocks:
                     override_reason,
                     confirm_risky_operation,
                     confirm_pdf_output,
+                    license_key,
                 ],
                 outputs=[shield_output_file, shield_entity_table, shield_status],
             )
@@ -235,6 +247,11 @@ def create_demo() -> gr.Blocks:
                 label="Workspace",
                 allow_custom_value=True,
             )
+            restore_license_key = gr.Textbox(
+                label="License key (optional)",
+                placeholder="pro_...",
+                type="password",
+            )
             with gr.Row():
                 restore_btn = gr.Button("Restore", variant="primary")
                 restore_refresh = gr.Button("Refresh Workspaces")
@@ -243,7 +260,7 @@ def create_demo() -> gr.Blocks:
 
             restore_btn.click(
                 fn=restore,
-                inputs=[restore_file_input, restore_workspace],
+                inputs=[restore_file_input, restore_workspace, restore_license_key],
                 outputs=[restore_output_file, restore_status],
             )
             restore_refresh.click(

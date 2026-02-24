@@ -1,0 +1,44 @@
+name: Performance Gate
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - "codex/**"
+
+jobs:
+  performance:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Sync dependencies
+        run: uv sync --extra dev
+
+      - name: Ensure pip exists for spaCy downloader
+        run: uv run python -m ensurepip
+
+      - name: Install spaCy models
+        run: |
+          uv run python -m spacy download en_core_web_lg
+          uv run python -m spacy download he_core_news_sm || uv run python -m spacy download xx_ent_wiki_sm
+
+      - name: Run launch performance gate
+        run: |
+          uv run cowork-shield benchmark-performance --rows 10000 --language en --enforce-gates --output performance-gate.json
+
+      - name: Upload benchmark artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-gate
+          path: performance-gate.json

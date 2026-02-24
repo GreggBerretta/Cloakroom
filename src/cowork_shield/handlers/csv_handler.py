@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
 import csv
 from io import StringIO
 from pathlib import Path
@@ -14,30 +15,10 @@ from cowork_shield.handlers.column_select import (
     resolve_column_selections,
 )
 from cowork_shield.handlers.pii_prefilter import should_detect_pii
-from cowork_shield.models import (
-    DetectedEntity,
-    EntityType,
-    FileRecord,
-    ReplacementRecord,
-    now_iso,
-)
+from cowork_shield.models import DetectedEntity, EntityType, FileRecord, ReplacementRecord, now_iso
 from cowork_shield.tokenizer.generator import TokenGenerator
 from cowork_shield.tokenizer.replacer import TextReplacer
 from cowork_shield.verification.verifier import compute_sha256
-
-
-def _detect_entities(
-    detection_engine: DetectionEngine,
-    *,
-    text: str,
-    source_id: str,
-    language: str,
-) -> list[DetectedEntity]:
-    try:
-        return detection_engine.detect_in_cell(text, source_id, language=language)
-    except TypeError:
-        # Compatibility for tests using stub engines without language arg.
-        return detection_engine.detect_in_cell(text, source_id)
 
 
 class CsvHandler:
@@ -83,6 +64,7 @@ class CsvHandler:
         total_entities = 0
 
         for row_idx, row in enumerate(rows):
+            pii_candidates: list[tuple[int, str]] = []
             for col_idx, cell_value in enumerate(row):
                 if not cell_value or not cell_value.strip():
                     continue
@@ -121,23 +103,31 @@ class CsvHandler:
                     float(cell_value.replace(",", ""))
                     continue
                 except ValueError:
-                    pass
+                    pii_candidates.append((col_idx, cell_value))
 
-                source_id = f"row:{row_idx},col:{col_idx}"
-                entities = _detect_entities(
-                    detection_engine,
-                    text=cell_value,
-                    source_id=source_id,
-                    language=language,
-                )
+            if not detect_pii or not pii_candidates:
+                continue
+
+            detected_by_col = _detect_entities_for_csv_row(
+                detection_engine,
+                row_idx=row_idx,
+                candidates=pii_candidates,
+                language=language,
+            )
+
+            for col_idx, entities in detected_by_col.items():
                 total_entities += len(entities)
-
-                if entities:
-                    replaced, records = self._replacer.replace_entities(
-                        cell_value, entities, token_generator, source_file
-                    )
-                    rows[row_idx][col_idx] = replaced
-                    all_records.extend(records)
+                if not entities:
+                    continue
+                source_value = rows[row_idx][col_idx]
+                replaced, records = self._replacer.replace_entities(
+                    source_value,
+                    entities,
+                    token_generator,
+                    source_file,
+                )
+                rows[row_idx][col_idx] = replaced
+                all_records.extend(records)
 
         # Write output with same dialect
         output = StringIO()
@@ -203,6 +193,8 @@ class CsvHandler:
             for col_idx, cell_value in enumerate(row):
                 if not cell_value:
                     continue
+                if "[" not in cell_value and "_" not in cell_value:
+                    continue
                 restored = self._replacer.restore_tokens(cell_value, reverse_lookup)
                 if restored != cell_value:
                     rows[row_idx][col_idx] = restored
@@ -227,3 +219,54 @@ def _collect_csv_samples(rows: list[list[str]], max_columns: int) -> dict[int, l
         if all(len(values) >= 3 for values in samples.values()):
             break
     return samples
+
+
+def _detect_entities_for_csv_row(
+    detection_engine: DetectionEngine,
+    *,
+    row_idx: int,
+    candidates: list[tuple[int, str]],
+    language: str,
+) -> dict[int, list[DetectedEntity]]:
+    delimiter = "\u241f"
+    text_parts = [value for _, value in candidates]
+    merged = delimiter.join(text_parts)
+    source_id = f"row:{row_idx}"
+
+    try:
+        merged_entities = detection_engine.detect_in_cell(merged, source_id, language=language)
+    except TypeError:
+        merged_entities = detection_engine.detect_in_cell(merged, source_id)
+
+    segments: list[tuple[int, int, int, str]] = []
+    cursor = 0
+    for col_idx, value in candidates:
+        start = cursor
+        end = start + len(value)
+        segments.append((col_idx, start, end, value))
+        cursor = end + len(delimiter)
+
+    entities_by_col: dict[int, list[DetectedEntity]] = defaultdict(list)
+    for entity in merged_entities:
+        for col_idx, start, end, value in segments:
+            if entity.start < start or entity.end > end:
+                continue
+            local_start = entity.start - start
+            local_end = entity.end - start
+            if local_start < 0 or local_end > len(value):
+                continue
+            entities_by_col[col_idx].append(
+                DetectedEntity(
+                    entity_type=entity.entity_type,
+                    text=value[local_start:local_end],
+                    start=local_start,
+                    end=local_end,
+                    score=entity.score,
+                    source_id=f"row:{row_idx},col:{col_idx}",
+                )
+            )
+            break
+
+    for col_idx in entities_by_col:
+        entities_by_col[col_idx].sort(key=lambda item: item.start)
+    return entities_by_col

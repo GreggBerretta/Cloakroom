@@ -74,3 +74,31 @@
 - Hebrew spreadsheet anonymization is significantly faster than prior English full-detect baseline in this environment, but still high in full-detect mode.
 - Column-only remains the fastest and most stable path for user-perceived responsiveness.
 - Restore latency is now sub-second for all measured Hebrew document paths in this benchmark.
+
+## v11 Launch Gate Benchmark (Current Build)
+- Date: 2026-02-24 05:38 UTC
+- Command:
+  - `uv run cowork-shield benchmark-performance --rows 10000 --language en --output /tmp/cws_perf_en.json`
+  - `uv run cowork-shield benchmark-performance --rows 10000 --language he --output /tmp/cws_perf_he.json`
+- Workspace: `perf-benchmark`
+
+### Results vs v11 Targets
+| Metric | Target (v11) | English (10k) | Hebrew (10k) | Status |
+| --- | --- | ---:| ---:| --- |
+| CSV anonymize | <= 8.0s | 48.95s | 20.00s | FAIL |
+| CSV restore | <= 2.0s | 0.16s | 0.14s | PASS |
+| Clipboard round-trip | <= 1.5s | 0.17s | 0.18s | PASS |
+
+### Current Interpretation
+- Restore and clipboard latency budgets are met with margin.
+- CSV anonymize remains the dominant bottleneck and does not meet launch target in either language mode.
+
+### Immediate Mitigation Path (If Anonymize Is Too Slow)
+1. Recommend spreadsheet users run column-selective mode first for large datasets:
+   - `--columns "Deal ID,Client Name" --no-detect-pii`
+2. Split 10k+ files into smaller batches when full PII detection is required.
+3. Keep full-detect runs asynchronous in UI (non-blocking status + progress).
+4. Prioritize engine work in next sprint:
+   - Batch detector calls beyond row-level grouping.
+   - Hybrid regex-first short-circuit for high-confidence entities.
+   - Optional high-accuracy model profile for heavy jobs only.

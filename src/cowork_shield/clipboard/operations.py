@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import subprocess
 from dataclasses import dataclass
+from time import perf_counter
 
 from cowork_shield.detection.engine import DetectionEngine
 from cowork_shield.exceptions import (
@@ -14,6 +15,11 @@ from cowork_shield.exceptions import (
     IntegrityError,
     ModelHashMismatchError,
     ReplayMismatchError,
+)
+from cowork_shield.governance.reporting import (
+    append_sanitization_report,
+    build_anonymize_entity_counts,
+    build_restore_entity_counts,
 )
 from cowork_shield.hallucination.detector import detect_token_anomalies
 from cowork_shield.hallucination.formatter import format_hallucination_flags
@@ -52,6 +58,7 @@ def shield_clipboard(
     override_user: str = "",
 ) -> ClipboardShieldResult:
     """Read clipboard, anonymize text in-memory, and overwrite clipboard."""
+    started = perf_counter()
     workspace_ctx.ensure_not_expired()
     with workspace_ctx.operation_lock():
         text = _pbpaste()
@@ -147,6 +154,22 @@ def shield_clipboard(
         workspace_ctx.vault_data.token_abi_version = "v2"
         workspace_ctx.persist()
 
+        duration_ms = int((perf_counter() - started) * 1000)
+        append_sanitization_report(
+            workspace_ctx,
+            operation="clipboard_anonymize",
+            file_path=CLIPBOARD_FILE_ID,
+            file_ext="clipboard",
+            duration_ms=duration_ms,
+            language=language,
+            entity_counts=build_anonymize_entity_counts(records, language=language),
+            entities_total=len(entities),
+            tokens_applied=len(records),
+            metadata={
+                "force_reanonymize": bool(force_reanonymize),
+            },
+        )
+
         return ClipboardShieldResult(
             entities_found=len(entities),
             tokens_applied=len(records),
@@ -156,6 +179,7 @@ def shield_clipboard(
 
 def restore_clipboard(workspace_ctx: WorkspaceContext) -> ClipboardRestoreResult:
     """Read clipboard tokenized text, restore originals, and overwrite clipboard."""
+    started = perf_counter()
     workspace_ctx.ensure_not_expired()
     with workspace_ctx.operation_lock():
         tokenized_text = _pbpaste()
@@ -175,9 +199,12 @@ def restore_clipboard(workspace_ctx: WorkspaceContext) -> ClipboardRestoreResult
             raise IntegrityError("No mappings found in workspace. Nothing to restore.")
 
         expected_tokens = _expected_clipboard_tokens(workspace_ctx)
+        known_tokens = set(reverse_lookup.keys())
+        observed_tokens = verifier.extract_token_matches(tokenized_text)
+        active_tokens = verifier.resolve_known_tokens(observed_tokens, known_tokens)
         flags = detect_token_anomalies(
             text=tokenized_text,
-            known_tokens=set(reverse_lookup.keys()),
+            known_tokens=known_tokens,
             expected_tokens=expected_tokens or None,
         )
         if flags:
@@ -202,8 +229,45 @@ def restore_clipboard(workspace_ctx: WorkspaceContext) -> ClipboardRestoreResult
         workspace_ctx.vault_data.last_used = now_iso()
         workspace_ctx.persist()
 
+        all_mappings = workspace_ctx.token_generator.get_all_mappings()
+        token_type_map = {
+            mapping.token.token_text: mapping.entity_type
+            for mapping in all_mappings.values()
+        }
+        token_original_map = {
+            mapping.token.token_text: mapping.original_value
+            for mapping in all_mappings.values()
+        }
+
+        self_destruct_enabled = bool(workspace_ctx.vault_data.self_destruct_on_restore)
+        if self_destruct_enabled:
+            workspace_ctx.token_generator.load_state({}, {})
+            workspace_ctx.vault_data.mappings = {}
+            workspace_ctx.vault_data.token_counter = {}
+            workspace_ctx.vault_data.file_records = []
+            workspace_ctx.vault_data.last_used = now_iso()
+            workspace_ctx.persist()
+
+        duration_ms = int((perf_counter() - started) * 1000)
+        append_sanitization_report(
+            workspace_ctx,
+            operation="clipboard_restore",
+            file_path=CLIPBOARD_FILE_ID,
+            file_ext="clipboard",
+            duration_ms=duration_ms,
+            language="auto",
+            entity_counts=build_restore_entity_counts(
+                token_texts=active_tokens,
+                token_to_entity_type=token_type_map,
+                token_to_original=token_original_map,
+            ),
+            entities_total=len(active_tokens),
+            tokens_restored=len(active_tokens),
+            metadata={"self_destruct_on_restore": self_destruct_enabled},
+        )
+
         return ClipboardRestoreResult(
-            tokens_restored=len(reverse_lookup),
+            tokens_restored=len(active_tokens),
             verification_passed=True,
         )
 

@@ -131,6 +131,7 @@ class TestUIAPIHelpers:
             "default",
             columns=["Name"],
             detect_pii=False,
+            license_key="pro_1234567890ABCDEF",
         )
 
         assert preview_called["value"] is False
