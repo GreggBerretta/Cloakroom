@@ -25,8 +25,5 @@ jobs:
       - name: Sync runtime dependencies
         run: uv sync
 
-      - name: Export runtime requirements
-        run: uv export --format requirements-txt --output-file requirements-runtime.txt
-
       - name: Run dependency vulnerability scan (pip-audit)
-        run: uvx --with pip-audit pip-audit -r requirements-runtime.txt
+        run: uv run --with pip-audit pip-audit --local
