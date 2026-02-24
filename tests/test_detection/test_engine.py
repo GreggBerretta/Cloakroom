@@ -1,6 +1,7 @@
 """Tests for the Presidio detection engine wrapper."""
 
 import pytest
+from types import SimpleNamespace
 
 from cowork_shield import detection
 from cowork_shield.exceptions import DetectionError
@@ -107,3 +108,35 @@ class TestDetectionEngine:
 
     def test_auto_hebrew_backend_defaults_to_spacy(self):
         assert detection.engine._resolve_hebrew_backend("auto") == "spacy"
+
+    def test_detect_many_reuses_ner_for_digit_variants(self, monkeypatch):
+        class FakeAnalyzer:
+            def __init__(self):
+                self.calls = 0
+
+            def analyze(self, *, text, entities, language):
+                self.calls += 1
+                return [
+                    SimpleNamespace(
+                        entity_type="PERSON",
+                        start=0,
+                        end=10,
+                        score=0.99,
+                    )
+                ]
+
+            def get_supported_entities(self, *, language):
+                return ["PERSON"]
+
+        engine = DetectionEngine(score_threshold=0.5, detection_mode="balanced")
+        analyzer = FakeAnalyzer()
+        monkeypatch.setattr(engine, "_get_analyzer_for_language", lambda _lang: analyzer)
+        monkeypatch.setattr(engine, "_detect_regex_entities", lambda _text, _lang: [])
+
+        rows = ["John Smith 111", "John Smith 222", "John Smith 333"]
+        results = engine.detect_many(rows, source_ids=["r1", "r2", "r3"], language="en")
+
+        assert analyzer.calls == 1
+        assert [len(entities) for entities in results] == [1, 1, 1]
+        assert all(entities[0].text == "John Smith" for entities in results)
+        assert [entities[0].source_id for entities in results] == ["r1", "r2", "r3"]

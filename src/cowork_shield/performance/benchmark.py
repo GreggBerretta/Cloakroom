@@ -21,6 +21,7 @@ from cowork_shield.workspace.manager import WorkspaceContext
 class BenchmarkResult:
     rows: int
     language: str
+    detection_mode: str
     anonymize_seconds: float
     restore_seconds: float
     clipboard_shield_seconds: float
@@ -40,6 +41,7 @@ class BenchmarkResult:
             "captured_at": self.captured_at,
             "rows": self.rows,
             "language": self.language,
+            "detection_mode": self.detection_mode,
             "workspace_name": self.workspace_name,
             "csv_input_path": self.csv_input_path,
             "csv_anonymized_path": self.csv_anonymized_path,
@@ -57,6 +59,7 @@ def run_csv_clipboard_benchmark(
     *,
     rows: int = 10_000,
     language: str = "en",
+    detection_mode: str = "balanced",
 ) -> BenchmarkResult:
     """Run the launch readiness benchmark for CSV + clipboard flows."""
     normalized_language = (language or "en").strip().lower()
@@ -71,6 +74,7 @@ def run_csv_clipboard_benchmark(
         anonymize_pipeline = AnonymizePipeline(
             workspace_ctx,
             score_threshold=0.7,
+            detection_mode=detection_mode,
             language=normalized_language,
         )
         restore_pipeline = RestorePipeline(workspace_ctx)
@@ -86,7 +90,12 @@ def run_csv_clipboard_benchmark(
         sample_clipboard = _benchmark_clipboard_sample(normalized_language)
         _set_system_clipboard(sample_clipboard)
         t2 = perf_counter()
-        shield_clipboard(workspace_ctx, score_threshold=0.7, language=normalized_language)
+        shield_clipboard(
+            workspace_ctx,
+            score_threshold=0.7,
+            detection_mode=detection_mode,
+            language=normalized_language,
+        )
         clipboard_shield_seconds = perf_counter() - t2
 
         t3 = perf_counter()
@@ -96,6 +105,7 @@ def run_csv_clipboard_benchmark(
         return BenchmarkResult(
             rows=rows,
             language=normalized_language,
+            detection_mode=detection_mode,
             anonymize_seconds=anonymize_seconds,
             restore_seconds=restore_seconds,
             clipboard_shield_seconds=clipboard_shield_seconds,

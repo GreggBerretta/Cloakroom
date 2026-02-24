@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import hashlib
 import importlib.metadata
 import importlib.util
@@ -20,12 +21,14 @@ from presidio_analyzer.nlp_engine import (
     TransformersNlpEngine,
 )
 
+from cowork_shield.detection.regex_prefilter import RegexPreFilter
 from cowork_shield.exceptions import DetectionError
 from cowork_shield.models import DetectedEntity, EntityType
 
 SUPPORTED_LANGUAGES = ("en", "he")
 LANGUAGE_CHOICES = ("auto", "en", "he")
 HEBREW_BACKEND_CHOICES = ("auto", "spacy", "stanza", "transformers")
+DETECTION_MODE_CHOICES = ("speed", "balanced", "accurate")
 
 ENGLISH_MODEL_NAME = "en_core_web_lg"
 HEBREW_MODEL_PRIMARY = "he_core_news_sm"
@@ -78,6 +81,22 @@ _TARGET_PRESIDIO_ENTITIES = tuple(
 )
 
 
+@dataclass(frozen=True)
+class DetectionProfile:
+    mode: str
+    regex_enabled: bool
+    regex_only: bool
+    ner_batch_size: int
+
+
+@dataclass(frozen=True)
+class _NerTemplate:
+    entity_type: EntityType
+    start: int
+    end: int
+    score: float
+
+
 def _safe_pkg_version(package_name: str) -> str:
     try:
         return importlib.metadata.version(package_name)
@@ -117,6 +136,40 @@ def _normalize_hebrew_backend(backend: str) -> str:
             f"'{backend}'. Expected one of: {', '.join(HEBREW_BACKEND_CHOICES)}"
         )
     return value
+
+
+def _normalize_detection_mode(mode: str) -> str:
+    value = (mode or "balanced").strip().lower()
+    if value not in DETECTION_MODE_CHOICES:
+        raise DetectionError(
+            "Unsupported detection mode "
+            f"'{mode}'. Expected one of: {', '.join(DETECTION_MODE_CHOICES)}"
+        )
+    return value
+
+
+def _resolve_detection_profile(mode: str) -> DetectionProfile:
+    normalized = _normalize_detection_mode(mode)
+    if normalized == "speed":
+        return DetectionProfile(
+            mode=normalized,
+            regex_enabled=True,
+            regex_only=False,
+            ner_batch_size=250,
+        )
+    if normalized == "accurate":
+        return DetectionProfile(
+            mode=normalized,
+            regex_enabled=True,
+            regex_only=False,
+            ner_batch_size=80,
+        )
+    return DetectionProfile(
+        mode=normalized,
+        regex_enabled=True,
+        regex_only=False,
+        ner_batch_size=150,
+    )
 
 
 def _resolve_hebrew_backend(requested_backend: str) -> str:
@@ -382,6 +435,7 @@ class DetectionEngine:
         hebrew_backend: str | None = None,
         hebrew_stanza_model: str | None = None,
         hebrew_transformer_model: str | None = None,
+        detection_mode: str = "balanced",
     ):
         self._score_threshold = score_threshold
         self._default_language = _normalize_language(default_language)
@@ -396,6 +450,8 @@ class DetectionEngine:
             hebrew_transformer_model
             or os.getenv(HEBREW_TRANSFORMER_MODEL_ENV, DEFAULT_HEBREW_TRANSFORMER_MODEL)
         ).strip()
+        self._profile = _resolve_detection_profile(detection_mode)
+        self._regex_prefilter = RegexPreFilter()
         self._model_hash: str | None = None
         self._resolved_hebrew_backend: str | None = None
         self._supported_entities_cache: dict[str, list[str]] = {}
@@ -410,6 +466,14 @@ class DetectionEngine:
     @property
     def legacy_model_lock_keys(self) -> tuple[str, ...]:
         return self.LEGACY_MODEL_LOCK_KEYS
+
+    @property
+    def detection_mode(self) -> str:
+        return self._profile.mode
+
+    @property
+    def ner_batch_size(self) -> int:
+        return self._profile.ner_batch_size
 
     def resolve_language(self, text: str, language: str | None = None) -> str:
         requested = self._default_language if language is None else _normalize_language(language)
@@ -440,44 +504,17 @@ class DetectionEngine:
             return []
 
         resolved_language = self.resolve_language(text, language)
-        analyzer = self._get_analyzer_for_language(resolved_language)
-        entities_to_analyze = self._target_entities_for_language(analyzer, resolved_language)
+        regex_entities = self._detect_regex_entities(text, resolved_language)
+        if self._profile.regex_only:
+            return regex_entities
 
-        try:
-            results = analyzer.analyze(
-                text=text,
-                entities=entities_to_analyze or None,
-                language=resolved_language,
-            )
-        except Exception as e:
-            raise DetectionError(f"Presidio analysis failed: {e}") from e
+        masked_text = self._mask_spans(text, regex_entities)
+        if not self._should_run_ner(masked_text):
+            return regex_entities
 
-        results = [r for r in results if r.score >= self._score_threshold]
-        results.sort(key=lambda r: r.start)
-
-        resolved_results = []
-        for result in results:
-            if resolved_results and result.start < resolved_results[-1].end:
-                if result.score > resolved_results[-1].score:
-                    resolved_results[-1] = result
-            else:
-                resolved_results.append(result)
-
-        detected_entities: list[DetectedEntity] = []
-        for result in resolved_results:
-            entity_type = EntityType.from_presidio(result.entity_type)
-            if entity_type is None:
-                continue
-            detected_entities.append(
-                DetectedEntity(
-                    entity_type=entity_type,
-                    text=text[result.start : result.end],
-                    start=result.start,
-                    end=result.end,
-                    score=result.score,
-                )
-            )
-        return detected_entities
+        ner_entities = self._detect_ner_entities(masked_text, text, resolved_language)
+        merged = self._merge_entities(regex_entities, ner_entities)
+        return merged
 
     def detect_in_cell(
         self,
@@ -499,6 +536,42 @@ class DetectionEngine:
             )
             for entity in entities
         ]
+
+    def detect_many(
+        self,
+        texts: list[str],
+        *,
+        source_ids: list[str] | None = None,
+        language: str | None = None,
+    ) -> list[list[DetectedEntity]]:
+        """Detect entities across many text inputs using chunked NER calls."""
+        if not texts:
+            return []
+
+        ids = source_ids or ["" for _ in texts]
+        if len(ids) != len(texts):
+            raise DetectionError("source_ids length must match texts length")
+
+        grouped: dict[str, list[int]] = {}
+        for idx, text in enumerate(texts):
+            resolved = self.resolve_language(text, language)
+            grouped.setdefault(resolved, []).append(idx)
+
+        results: list[list[DetectedEntity]] = [[] for _ in texts]
+        for resolved_language, indices in grouped.items():
+            batch_size = max(1, self._profile.ner_batch_size)
+            for offset in range(0, len(indices), batch_size):
+                chunk_indices = indices[offset : offset + batch_size]
+                chunk_texts = [texts[i] for i in chunk_indices]
+                chunk_ids = [ids[i] for i in chunk_indices]
+                chunk_results = self._detect_many_same_language(
+                    chunk_texts,
+                    source_ids=chunk_ids,
+                    language=resolved_language,
+                )
+                for local_idx, global_idx in enumerate(chunk_indices):
+                    results[global_idx] = chunk_results[local_idx]
+        return results
 
     def _target_entities_for_language(
         self,
@@ -522,6 +595,222 @@ class DetectionEngine:
                 entities = list(_TARGET_PRESIDIO_ENTITIES)
 
         self._supported_entities_cache[language] = entities
+        return entities
+
+    def _detect_regex_entities(self, text: str, language: str) -> list[DetectedEntity]:
+        if not self._profile.regex_enabled:
+            return []
+        entities = self._regex_prefilter.extract_entities(text, language=language)
+        return [entity for entity in entities if entity.score >= self._score_threshold]
+
+    def _detect_ner_entities(
+        self,
+        masked_text: str,
+        original_text: str,
+        language: str,
+    ) -> list[DetectedEntity]:
+        analyzer = self._get_analyzer_for_language(language)
+        entities_to_analyze = self._target_entities_for_language(analyzer, language)
+
+        try:
+            results = analyzer.analyze(
+                text=masked_text,
+                entities=entities_to_analyze or None,
+                language=language,
+            )
+        except Exception as e:
+            raise DetectionError(f"Presidio analysis failed: {e}") from e
+
+        detected: list[DetectedEntity] = []
+        for result in results:
+            if result.score < self._score_threshold:
+                continue
+            entity_type = EntityType.from_presidio(result.entity_type)
+            if entity_type is None:
+                continue
+            detected.append(
+                DetectedEntity(
+                    entity_type=entity_type,
+                    text=original_text[result.start : result.end],
+                    start=result.start,
+                    end=result.end,
+                    score=result.score,
+                )
+            )
+        return detected
+
+    def _merge_entities(
+        self,
+        regex_entities: list[DetectedEntity],
+        ner_entities: list[DetectedEntity],
+    ) -> list[DetectedEntity]:
+        merged = sorted(regex_entities + ner_entities, key=lambda item: (item.start, -item.score))
+        resolved: list[DetectedEntity] = []
+        for entity in merged:
+            if entity.start >= entity.end:
+                continue
+            if resolved and entity.start < resolved[-1].end:
+                if entity.score > resolved[-1].score:
+                    resolved[-1] = entity
+                continue
+            resolved.append(entity)
+        return resolved
+
+    @staticmethod
+    def _mask_spans(text: str, entities: list[DetectedEntity]) -> str:
+        if not entities:
+            return text
+        chars = list(text)
+        for entity in entities:
+            for idx in range(entity.start, min(entity.end, len(chars))):
+                chars[idx] = " "
+        return "".join(chars)
+
+    def _should_run_ner(self, masked_text: str) -> bool:
+        stripped = masked_text.strip()
+        if not stripped:
+            return False
+        if self._profile.mode != "speed":
+            return True
+        # In speed mode skip expensive NER on tiny residual fragments.
+        return sum(1 for char in stripped if char.isalnum()) >= 12
+
+    def _detect_many_same_language(
+        self,
+        texts: list[str],
+        *,
+        source_ids: list[str],
+        language: str,
+    ) -> list[list[DetectedEntity]]:
+        if not texts:
+            return []
+
+        analyzer = self._get_analyzer_for_language(language)
+        entities_to_analyze = self._target_entities_for_language(analyzer, language)
+
+        regex_entities_by_idx: list[list[DetectedEntity]] = []
+        masked_text_by_idx: list[str] = []
+        run_ner_by_idx: list[bool] = []
+
+        for text in texts:
+            regex_entities = self._detect_regex_entities(text, language)
+            regex_entities_by_idx.append(regex_entities)
+
+            if self._profile.regex_only:
+                masked_text_by_idx.append("")
+                run_ner_by_idx.append(False)
+                continue
+
+            masked_text = self._mask_spans(text, regex_entities)
+            masked_text_by_idx.append(masked_text)
+            run_ner_by_idx.append(self._should_run_ner(masked_text))
+
+        ner_templates_cache: dict[str, list[_NerTemplate]] = {}
+        ner_entities_by_idx: list[list[DetectedEntity]] = [[] for _ in texts]
+        for idx, text in enumerate(texts):
+            if not run_ner_by_idx[idx]:
+                continue
+
+            masked_text = masked_text_by_idx[idx]
+            cache_key = self._canonicalize_ner_text(masked_text)
+            templates = ner_templates_cache.get(cache_key)
+            if templates is None:
+                templates = self._analyze_ner_templates(
+                    analyzer=analyzer,
+                    text=cache_key,
+                    language=language,
+                    entities_to_analyze=entities_to_analyze,
+                )
+                ner_templates_cache[cache_key] = templates
+
+            ner_entities_by_idx[idx] = self._materialize_ner_entities(
+                templates,
+                original_text=text,
+            )
+
+        results: list[list[DetectedEntity]] = []
+        for idx in range(len(texts)):
+            merged = self._merge_entities(regex_entities_by_idx[idx], ner_entities_by_idx[idx])
+            results.append(
+                [
+                    DetectedEntity(
+                        entity_type=entity.entity_type,
+                        text=entity.text,
+                        start=entity.start,
+                        end=entity.end,
+                        score=entity.score,
+                        source_id=source_ids[idx],
+                    )
+                    for entity in merged
+                ]
+            )
+        return results
+
+    def _analyze_ner_templates(
+        self,
+        *,
+        analyzer: AnalyzerEngine,
+        text: str,
+        language: str,
+        entities_to_analyze: list[str],
+    ) -> list[_NerTemplate]:
+        try:
+            results = analyzer.analyze(
+                text=text,
+                entities=entities_to_analyze or None,
+                language=language,
+            )
+        except Exception as e:
+            raise DetectionError(f"Presidio analysis failed: {e}") from e
+
+        templates: list[_NerTemplate] = []
+        for result in results:
+            if result.score < self._score_threshold:
+                continue
+            entity_type = EntityType.from_presidio(result.entity_type)
+            if entity_type is None:
+                continue
+            if result.start >= result.end:
+                continue
+            templates.append(
+                _NerTemplate(
+                    entity_type=entity_type,
+                    start=result.start,
+                    end=result.end,
+                    score=result.score,
+                )
+            )
+        templates.sort(key=lambda item: item.start)
+        return templates
+
+    @staticmethod
+    def _canonicalize_ner_text(text: str) -> str:
+        if not text:
+            return text
+        return "".join("0" if char.isdigit() else char for char in text)
+
+    def _materialize_ner_entities(
+        self,
+        templates: list[_NerTemplate],
+        *,
+        original_text: str,
+    ) -> list[DetectedEntity]:
+        text_len = len(original_text)
+        entities: list[DetectedEntity] = []
+        for template in templates:
+            if template.start < 0 or template.end > text_len:
+                continue
+            if template.start >= template.end:
+                continue
+            entities.append(
+                DetectedEntity(
+                    entity_type=template.entity_type,
+                    text=original_text[template.start : template.end],
+                    start=template.start,
+                    end=template.end,
+                    score=template.score,
+                )
+            )
         return entities
 
     def _detect_in_cell_cached(

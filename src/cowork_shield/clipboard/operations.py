@@ -49,6 +49,7 @@ def shield_clipboard(
     workspace_ctx: WorkspaceContext,
     *,
     score_threshold: float = 0.7,
+    detection_mode: str = "balanced",
     language: str = "auto",
     hebrew_backend: str | None = None,
     hebrew_stanza_model: str | None = None,
@@ -70,6 +71,7 @@ def shield_clipboard(
 
         detection = _create_detection_engine(
             score_threshold=score_threshold,
+            detection_mode=detection_mode,
             hebrew_backend=hebrew_backend,
             hebrew_stanza_model=hebrew_stanza_model,
             hebrew_transformer_model=hebrew_transformer_model,
@@ -322,6 +324,7 @@ def _detect_in_cell(
 def _create_detection_engine(
     *,
     score_threshold: float,
+    detection_mode: str,
     hebrew_backend: str | None,
     hebrew_stanza_model: str | None,
     hebrew_transformer_model: str | None,
@@ -329,6 +332,7 @@ def _create_detection_engine(
     try:
         return DetectionEngine(
             score_threshold=score_threshold,
+            detection_mode=detection_mode,
             hebrew_backend=hebrew_backend,
             hebrew_stanza_model=hebrew_stanza_model,
             hebrew_transformer_model=hebrew_transformer_model,

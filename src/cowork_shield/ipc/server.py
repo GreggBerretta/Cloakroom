@@ -13,8 +13,11 @@ from typing import Any
 
 from cowork_shield import __version__ as ENGINE_VERSION
 from cowork_shield.clipboard.operations import restore_clipboard, shield_clipboard
-from cowork_shield.detection.engine import DetectionEngine
-from cowork_shield.detection.engine import HEBREW_BACKEND_CHOICES
+from cowork_shield.detection.engine import (
+    DETECTION_MODE_CHOICES,
+    DetectionEngine,
+    HEBREW_BACKEND_CHOICES,
+)
 from cowork_shield.exceptions import (
     CoWorkShieldError,
     ColumnSelectionError,
@@ -274,6 +277,7 @@ class IPCServer:
         payload = build_hello_payload(
             model_hash=detection.get_model_hash(),
             supported_hebrew_backends=HEBREW_BACKEND_CHOICES,
+            supported_detection_modes=DETECTION_MODE_CHOICES,
             supported_pdf_output_formats=("md", "docx"),
             supported_ipc_modes=("stdio", "unix_socket"),
         )
@@ -334,6 +338,7 @@ class IPCServer:
         pipeline = AnonymizePipeline(
             ctx,
             score_threshold=float(payload.get("score_threshold", 0.7)),
+            detection_mode=str(payload.get("detection_mode", "balanced")),
             language=str(payload.get("language", "auto")),
             hebrew_backend=str(payload.get("hebrew_backend", "auto")),
             hebrew_stanza_model=str(payload.get("hebrew_stanza_model", "he")),
@@ -393,6 +398,7 @@ class IPCServer:
         result = shield_clipboard(
             ctx,
             score_threshold=float(payload.get("score_threshold", 0.7)),
+            detection_mode=str(payload.get("detection_mode", "balanced")),
             language=str(payload.get("language", "auto")),
             hebrew_backend=str(payload.get("hebrew_backend", "auto")),
             hebrew_stanza_model=str(payload.get("hebrew_stanza_model", "he")),

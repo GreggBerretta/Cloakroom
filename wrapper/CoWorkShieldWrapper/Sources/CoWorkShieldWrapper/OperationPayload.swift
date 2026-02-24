@@ -3,6 +3,7 @@ import Foundation
 public struct OperationPayload: Sendable, Equatable {
     public var columns: [String]
     public var detectPII: Bool?
+    public var detectionMode: String?
     public var hebrewBackend: String?
     public var pdfOutputFormat: String?
     public var forceReanonymize: Bool?
@@ -12,6 +13,7 @@ public struct OperationPayload: Sendable, Equatable {
     public init(
         columns: [String] = [],
         detectPII: Bool? = nil,
+        detectionMode: String? = nil,
         hebrewBackend: String? = nil,
         pdfOutputFormat: String? = nil,
         forceReanonymize: Bool? = nil,
@@ -20,6 +22,7 @@ public struct OperationPayload: Sendable, Equatable {
     ) {
         self.columns = columns
         self.detectPII = detectPII
+        self.detectionMode = detectionMode
         self.hebrewBackend = hebrewBackend
         self.pdfOutputFormat = pdfOutputFormat
         self.forceReanonymize = forceReanonymize
@@ -34,6 +37,9 @@ public struct OperationPayload: Sendable, Equatable {
         }
         if let detectPII {
             payload["detect_pii"] = .bool(detectPII)
+        }
+        if let detectionMode, !detectionMode.isEmpty {
+            payload["detection_mode"] = .string(detectionMode)
         }
         if let hebrewBackend, !hebrewBackend.isEmpty {
             payload["hebrew_backend"] = .string(hebrewBackend)
@@ -53,4 +59,3 @@ public struct OperationPayload: Sendable, Equatable {
         return payload
     }
 }
-

@@ -187,6 +187,7 @@ private func checkPayloadParityFields() throws {
     let payload = OperationPayload(
         columns: ["A", "Client Name"],
         detectPII: true,
+        detectionMode: "speed",
         hebrewBackend: "stanza",
         pdfOutputFormat: "docx",
         forceReanonymize: true,
@@ -196,6 +197,7 @@ private func checkPayloadParityFields() throws {
 
     try expect(payload["columns"] != nil, "Payload missing columns")
     try expect(payload["detect_pii"] != nil, "Payload missing detect_pii")
+    try expect(payload["detection_mode"] != nil, "Payload missing detection_mode")
     try expect(payload["hebrew_backend"] != nil, "Payload missing hebrew_backend")
     try expect(payload["pdf_output_format"] != nil, "Payload missing pdf_output_format")
     try expect(payload["force_reanonymize"] != nil, "Payload missing force_reanonymize")

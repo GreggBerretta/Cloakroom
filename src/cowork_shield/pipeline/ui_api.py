@@ -140,6 +140,7 @@ def anonymize_file(
     output_path: str | Path | None = None,
     ttl_hours: int = FREE_MAX_TTL_HOURS,
     score_threshold: float = 0.7,
+    detection_mode: str = "balanced",
     language: str = "auto",
     allow_lossy_xlsx: bool = False,
     pdf_output_format: str = "md",
@@ -190,6 +191,7 @@ def anonymize_file(
     pipeline = AnonymizePipeline(
         ctx,
         score_threshold=score_threshold,
+        detection_mode=detection_mode,
         language=language,
         force_reanonymize=force_reanonymize,
         override_reason=reason,

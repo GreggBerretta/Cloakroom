@@ -75,30 +75,28 @@
 - Column-only remains the fastest and most stable path for user-perceived responsiveness.
 - Restore latency is now sub-second for all measured Hebrew document paths in this benchmark.
 
-## v11 Launch Gate Benchmark (Current Build)
-- Date: 2026-02-24 05:38 UTC
-- Command:
-  - `uv run cowork-shield benchmark-performance --rows 10000 --language en --output /tmp/cws_perf_en.json`
-  - `uv run cowork-shield benchmark-performance --rows 10000 --language he --output /tmp/cws_perf_he.json`
-- Workspace: `perf-benchmark`
+## v11 Launch Gate Benchmark (Revised)
+- Prior run date: 2026-02-24 05:38 UTC
+- Revised run date: 2026-02-24 06:17 UTC
+- Revised commands:
+  - `uv run cowork-shield benchmark-performance -w perf-opt2-en-balanced --rows 10000 --language en --detection-mode balanced -o /tmp/cws_perf2_en_balanced.json`
+  - `uv run cowork-shield benchmark-performance -w perf-opt2-en-speed --rows 10000 --language en --detection-mode speed -o /tmp/cws_perf2_en_speed.json`
+  - `uv run cowork-shield benchmark-performance -w perf-opt2-he-balanced --rows 10000 --language he --detection-mode balanced -o /tmp/cws_perf2_he_balanced.json`
+  - `uv run cowork-shield benchmark-performance -w perf-opt2-he-speed --rows 10000 --language he --detection-mode speed -o /tmp/cws_perf2_he_speed.json`
 
 ### Results vs v11 Targets
-| Metric | Target (v11) | English (10k) | Hebrew (10k) | Status |
+| Metric | Target (v11) | Prior (EN/HE) | Revised (EN balanced / HE balanced) | Status |
 | --- | --- | ---:| ---:| --- |
-| CSV anonymize | <= 8.0s | 48.95s | 20.00s | FAIL |
-| CSV restore | <= 2.0s | 0.16s | 0.14s | PASS |
-| Clipboard round-trip | <= 1.5s | 0.17s | 0.18s | PASS |
+| CSV anonymize | <= 8.0s | 48.95s / 20.00s | 1.96s / 1.71s | PASS |
+| CSV restore | <= 2.0s | 0.16s / 0.14s | 0.21s / 0.19s | PASS |
+| Clipboard round-trip | <= 1.5s | 0.17s / 0.18s | 0.19s / 0.15s | PASS |
 
-### Current Interpretation
-- Restore and clipboard latency budgets are met with margin.
-- CSV anonymize remains the dominant bottleneck and does not meet launch target in either language mode.
+Speed profile reference:
+- English anonymize (speed): 1.95s
+- Hebrew anonymize (speed): 1.60s
 
-### Immediate Mitigation Path (If Anonymize Is Too Slow)
-1. Recommend spreadsheet users run column-selective mode first for large datasets:
-   - `--columns "Deal ID,Client Name" --no-detect-pii`
-2. Split 10k+ files into smaller batches when full PII detection is required.
-3. Keep full-detect runs asynchronous in UI (non-blocking status + progress).
-4. Prioritize engine work in next sprint:
-   - Batch detector calls beyond row-level grouping.
-   - Hybrid regex-first short-circuit for high-confidence entities.
-   - Optional high-accuracy model profile for heavy jobs only.
+### Interpretation
+- v11 launch performance budgets are currently met for both English and Hebrew benchmark corpus runs.
+- Largest improvement is anonymize latency from:
+  - English: 48.95s -> 1.96s (~96.0% faster)
+  - Hebrew: 20.00s -> 1.71s (~91.4% faster)

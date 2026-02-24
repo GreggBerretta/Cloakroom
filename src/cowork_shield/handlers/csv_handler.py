@@ -62,6 +62,8 @@ class CsvHandler:
 
         all_records: list[ReplacementRecord] = []
         total_entities = 0
+        pending_detection_rows: list[tuple[int, list[tuple[int, str]]]] = []
+        batch_size = max(1, int(getattr(detection_engine, "ner_batch_size", 100)))
 
         for row_idx, row in enumerate(rows):
             pii_candidates: list[tuple[int, str]] = []
@@ -108,26 +110,38 @@ class CsvHandler:
             if not detect_pii or not pii_candidates:
                 continue
 
-            detected_by_col = _detect_entities_for_csv_row(
+            pending_detection_rows.append((row_idx, pii_candidates))
+            if len(pending_detection_rows) < batch_size:
+                continue
+            entities_by_row = _detect_entities_for_csv_rows(
                 detection_engine,
-                row_idx=row_idx,
-                candidates=pii_candidates,
+                rows_batch=pending_detection_rows,
                 language=language,
             )
+            pending_detection_rows = []
+            total_entities += _apply_detected_entities_to_rows(
+                entities_by_row,
+                rows,
+                replacer=self._replacer,
+                token_generator=token_generator,
+                source_file=source_file,
+                all_records=all_records,
+            )
 
-            for col_idx, entities in detected_by_col.items():
-                total_entities += len(entities)
-                if not entities:
-                    continue
-                source_value = rows[row_idx][col_idx]
-                replaced, records = self._replacer.replace_entities(
-                    source_value,
-                    entities,
-                    token_generator,
-                    source_file,
-                )
-                rows[row_idx][col_idx] = replaced
-                all_records.extend(records)
+        if pending_detection_rows:
+            entities_by_row = _detect_entities_for_csv_rows(
+                detection_engine,
+                rows_batch=pending_detection_rows,
+                language=language,
+            )
+            total_entities += _apply_detected_entities_to_rows(
+                entities_by_row,
+                rows,
+                replacer=self._replacer,
+                token_generator=token_generator,
+                source_file=source_file,
+                all_records=all_records,
+            )
 
         # Write output with same dialect
         output = StringIO()
@@ -221,52 +235,119 @@ def _collect_csv_samples(rows: list[list[str]], max_columns: int) -> dict[int, l
     return samples
 
 
-def _detect_entities_for_csv_row(
+def _detect_entities_for_csv_rows(
     detection_engine: DetectionEngine,
     *,
-    row_idx: int,
-    candidates: list[tuple[int, str]],
+    rows_batch: list[tuple[int, list[tuple[int, str]]]],
     language: str,
-) -> dict[int, list[DetectedEntity]]:
+) -> dict[int, dict[int, list[DetectedEntity]]]:
     delimiter = "\u241f"
-    text_parts = [value for _, value in candidates]
-    merged = delimiter.join(text_parts)
-    source_id = f"row:{row_idx}"
+    merged_texts: list[str] = []
+    source_ids: list[str] = []
+    segments_by_row: dict[int, list[tuple[int, int, int, str]]] = {}
 
-    try:
-        merged_entities = detection_engine.detect_in_cell(merged, source_id, language=language)
-    except TypeError:
-        merged_entities = detection_engine.detect_in_cell(merged, source_id)
+    for row_idx, candidates in rows_batch:
+        text_parts = [value for _, value in candidates]
+        merged_texts.append(delimiter.join(text_parts))
+        source_ids.append(f"row:{row_idx}")
 
-    segments: list[tuple[int, int, int, str]] = []
-    cursor = 0
-    for col_idx, value in candidates:
-        start = cursor
-        end = start + len(value)
-        segments.append((col_idx, start, end, value))
-        cursor = end + len(delimiter)
+        segments: list[tuple[int, int, int, str]] = []
+        cursor = 0
+        for col_idx, value in candidates:
+            start = cursor
+            end = start + len(value)
+            segments.append((col_idx, start, end, value))
+            cursor = end + len(delimiter)
+        segments_by_row[row_idx] = segments
 
-    entities_by_col: dict[int, list[DetectedEntity]] = defaultdict(list)
-    for entity in merged_entities:
-        for col_idx, start, end, value in segments:
-            if entity.start < start or entity.end > end:
-                continue
-            local_start = entity.start - start
-            local_end = entity.end - start
-            if local_start < 0 or local_end > len(value):
-                continue
-            entities_by_col[col_idx].append(
-                DetectedEntity(
-                    entity_type=entity.entity_type,
-                    text=value[local_start:local_end],
-                    start=local_start,
-                    end=local_end,
-                    score=entity.score,
-                    source_id=f"row:{row_idx},col:{col_idx}",
+    merged_results = _detect_many_compatible(
+        detection_engine,
+        merged_texts=merged_texts,
+        source_ids=source_ids,
+        language=language,
+    )
+
+    entities_by_row: dict[int, dict[int, list[DetectedEntity]]] = {}
+    for idx, (row_idx, _candidates) in enumerate(rows_batch):
+        merged_entities = merged_results[idx]
+        segments = segments_by_row[row_idx]
+        entities_by_col: dict[int, list[DetectedEntity]] = defaultdict(list)
+        for entity in merged_entities:
+            for col_idx, start, end, value in segments:
+                if entity.start < start or entity.end > end:
+                    continue
+                local_start = entity.start - start
+                local_end = entity.end - start
+                if local_start < 0 or local_end > len(value):
+                    continue
+                entities_by_col[col_idx].append(
+                    DetectedEntity(
+                        entity_type=entity.entity_type,
+                        text=value[local_start:local_end],
+                        start=local_start,
+                        end=local_end,
+                        score=entity.score,
+                        source_id=f"row:{row_idx},col:{col_idx}",
+                    )
                 )
-            )
-            break
+                break
 
-    for col_idx in entities_by_col:
-        entities_by_col[col_idx].sort(key=lambda item: item.start)
-    return entities_by_col
+        for col_idx in entities_by_col:
+            entities_by_col[col_idx].sort(key=lambda item: item.start)
+        entities_by_row[row_idx] = dict(entities_by_col)
+
+    return entities_by_row
+
+
+def _detect_many_compatible(
+    detection_engine: DetectionEngine,
+    *,
+    merged_texts: list[str],
+    source_ids: list[str],
+    language: str,
+) -> list[list[DetectedEntity]]:
+    if hasattr(detection_engine, "detect_many"):
+        try:
+            return detection_engine.detect_many(
+                merged_texts,
+                source_ids=source_ids,
+                language=language,
+            )
+        except TypeError:
+            pass
+
+    results: list[list[DetectedEntity]] = []
+    for text, source_id in zip(merged_texts, source_ids):
+        try:
+            detected = detection_engine.detect_in_cell(text, source_id, language=language)
+        except TypeError:
+            detected = detection_engine.detect_in_cell(text, source_id)
+        results.append(detected)
+    return results
+
+
+def _apply_detected_entities_to_rows(
+    entities_by_row: dict[int, dict[int, list[DetectedEntity]]],
+    rows: list[list[str]],
+    *,
+    replacer: TextReplacer,
+    token_generator: TokenGenerator,
+    source_file: str,
+    all_records: list[ReplacementRecord],
+) -> int:
+    total_entities = 0
+    for row_idx, entities_by_col in entities_by_row.items():
+        for col_idx, entities in entities_by_col.items():
+            total_entities += len(entities)
+            if not entities:
+                continue
+            source_value = rows[row_idx][col_idx]
+            replaced, records = replacer.replace_entities(
+                source_value,
+                entities,
+                token_generator,
+                source_file,
+            )
+            rows[row_idx][col_idx] = replaced
+            all_records.extend(records)
+    return total_entities

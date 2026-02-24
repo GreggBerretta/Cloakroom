@@ -158,6 +158,11 @@ public struct IPCEnvelope: Codable, Equatable, Sendable {
             else {
                 throw IPCEnvelopeValidationError.missingField("payload.supported_hebrew_backends")
             }
+            guard let detectionModes = payload["supported_detection_modes"]?.arrayValue,
+                !detectionModes.isEmpty
+            else {
+                throw IPCEnvelopeValidationError.missingField("payload.supported_detection_modes")
+            }
             guard let ipcModes = payload["supported_ipc_modes"]?.arrayValue, !ipcModes.isEmpty else {
                 throw IPCEnvelopeValidationError.missingField("payload.supported_ipc_modes")
             }

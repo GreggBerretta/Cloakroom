@@ -59,6 +59,7 @@ class AnonymizePipeline:
         self,
         workspace_ctx: WorkspaceContext,
         score_threshold: float = 0.7,
+        detection_mode: str = "balanced",
         language: str = "auto",
         hebrew_backend: str | None = None,
         hebrew_stanza_model: str | None = None,
@@ -77,6 +78,7 @@ class AnonymizePipeline:
         self._clock = clock or SystemClock()
         self._detection = DetectionEngine(
             score_threshold=score_threshold,
+            detection_mode=detection_mode,
             hebrew_backend=hebrew_backend,
             hebrew_stanza_model=hebrew_stanza_model,
             hebrew_transformer_model=hebrew_transformer_model,

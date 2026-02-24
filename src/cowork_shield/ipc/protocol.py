@@ -37,6 +37,7 @@ RESPONSE_REQUIRED_FIELDS = (
 COMMON_PAYLOAD_OPTIONAL_FIELDS = (
     "columns",
     "detect_pii",
+    "detection_mode",
     "hebrew_backend",
     "pdf_output_format",
     "force_reanonymize",
@@ -214,6 +215,7 @@ def build_hello_payload(
     *,
     model_hash: str,
     supported_hebrew_backends: tuple[str, ...],
+    supported_detection_modes: tuple[str, ...],
     supported_pdf_output_formats: tuple[str, ...],
     supported_ipc_modes: tuple[str, ...],
 ) -> dict[str, Any]:
@@ -224,6 +226,7 @@ def build_hello_payload(
         "schema_hash": SCHEMA_HASH,
         "model_hash": model_hash,
         "supported_hebrew_backends": list(supported_hebrew_backends),
+        "supported_detection_modes": list(supported_detection_modes),
         "supported_pdf_output_formats": list(supported_pdf_output_formats),
         "supported_ipc_modes": list(supported_ipc_modes),
     }
@@ -268,7 +271,7 @@ def _validate_common_payload_fields(payload: dict[str, Any]) -> None:
     if force_reanonymize is not None and not isinstance(force_reanonymize, bool):
         raise IPCError("Invalid payload: 'force_reanonymize' must be a boolean")
 
-    for key in ("hebrew_backend", "pdf_output_format", "reason", "license_key"):
+    for key in ("detection_mode", "hebrew_backend", "pdf_output_format", "reason", "license_key"):
         value = payload.get(key)
         if value is not None and not isinstance(value, str):
             raise IPCError(f"Invalid payload: '{key}' must be a string")

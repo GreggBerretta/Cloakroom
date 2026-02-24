@@ -31,19 +31,24 @@ This status is explicitly based on `HANDOFF_B.md` (lean internal validation scop
 - Swift native menu-bar shell target scaffold
 
 ## Validation
-- `uv run pytest -q` -> 296 passed
+- `uv run pytest -q` -> 297 passed
 - `swift build` in `wrapper/CoWorkShieldWrapper` -> pass
 - `swift run wrapper-invariant-checks` -> pass
 
 ## Performance Reality vs Target
-Current build meets restore and clipboard latency goals, but does not meet 10k CSV anonymize budget.
+Current build now meets anonymize, restore, and clipboard latency goals after the detection optimization pass.
 
-Measured (10k rows):
-- English anonymize: 48.95s (target <= 8s)
-- Hebrew anonymize: 20.00s (target <= 8s)
-- restore: pass
-- clipboard: pass
+Measured (10k rows, 2026-02-24):
+- English anonymize (balanced): 1.96s (target <= 8s) -> pass
+- English anonymize (speed): 1.95s (target <= 8s) -> pass
+- Hebrew anonymize (balanced): 1.71s (target <= 8s) -> pass
+- Hebrew anonymize (speed): 1.60s (target <= 8s) -> pass
+- Restore: 0.19-0.22s (target <= 2s) -> pass
+- Clipboard round-trip: 0.14-0.23s (target <= 1.5s) -> pass
+
+Delta from prior baseline:
+- English anonymize: 48.95s -> 1.96s (~96.0% faster)
+- Hebrew anonymize: 20.00s -> 1.71s (~91.4% faster)
 
 ## Decision Point
-The project is operationally ready for continued internal validation and pilot hardening.
-Release-level commercialization should wait until CSV full-detect anonymize throughput reaches target or is explicitly product-scoped behind an alternative workflow profile.
+The project is operationally ready for continued internal validation and pilot hardening with performance budgets currently satisfied.

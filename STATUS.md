@@ -6,6 +6,7 @@
 - Branch: `codex/handoff-b-status-doc-clean`
 - Scope Baseline: `HANDOFF_B.md`
 - Execution Layer: HANDOFF_B core + Phase 2 v11 launch-prep additions
+- Performance Baseline Revision: post-optimization detection pipeline (regex prefilter + batched detection + canonicalized NER caching)
 
 ## Executive Status
 The fork is in a strong validation state with hardened fail-closed behavior and expanded governance/monetization controls.
@@ -73,7 +74,7 @@ New v11 launch-prep additions in this update:
 
 ### Python Test Suite
 - Command: `uv run pytest -q`
-- Result: **296 passed, 0 failed**
+- Result: **297 passed, 0 failed**
 
 ### Swift Wrapper Build
 - Command: `swift build` (in `wrapper/CoWorkShieldWrapper`)
@@ -83,31 +84,32 @@ New v11 launch-prep additions in this update:
 - Command: `swift run wrapper-invariant-checks`
 - Result: **PASS**
 
-## Performance Gate Results (Current Build)
+## Performance Baselines (Revised)
 
+### Prior Baseline (Pre-Optimization)
+- English 10k CSV anonymize: **48.95s** (FAIL)
+- Hebrew 10k CSV anonymize: **20.00s** (FAIL)
+- 10k CSV restore: **0.14-0.16s** (PASS)
+- Clipboard round-trip: **0.17-0.18s** (PASS)
+
+### Current Baseline (Post-Optimization, 2026-02-24)
 Benchmark command used:
-- `uv run cowork-shield benchmark-performance --rows 10000 --language en --output /tmp/cws_perf_en.json`
-- `uv run cowork-shield benchmark-performance --rows 10000 --language he --output /tmp/cws_perf_he.json`
+- `uv run cowork-shield benchmark-performance -w perf-opt2-en-balanced --rows 10000 --language en --detection-mode balanced -o /tmp/cws_perf2_en_balanced.json`
+- `uv run cowork-shield benchmark-performance -w perf-opt2-en-speed --rows 10000 --language en --detection-mode speed -o /tmp/cws_perf2_en_speed.json`
+- `uv run cowork-shield benchmark-performance -w perf-opt2-he-balanced --rows 10000 --language he --detection-mode balanced -o /tmp/cws_perf2_he_balanced.json`
+- `uv run cowork-shield benchmark-performance -w perf-opt2-he-speed --rows 10000 --language he --detection-mode speed -o /tmp/cws_perf2_he_speed.json`
 
 Measured:
-- English 10k CSV anonymize: **48.95s** (target <= 8s) -> FAIL
-- Hebrew 10k CSV anonymize: **20.00s** (target <= 8s) -> FAIL
-- English 10k CSV restore: **0.16s** (target <= 2s) -> PASS
-- Hebrew 10k CSV restore: **0.14s** (target <= 2s) -> PASS
-- Clipboard round-trip: **0.17-0.18s** (target <= 1.5s) -> PASS
+- English 10k CSV anonymize (balanced): **1.96s** (target <= 8s) -> PASS
+- English 10k CSV anonymize (speed): **1.95s** (target <= 8s) -> PASS
+- Hebrew 10k CSV anonymize (balanced): **1.71s** (target <= 8s) -> PASS
+- Hebrew 10k CSV anonymize (speed): **1.60s** (target <= 8s) -> PASS
+- 10k CSV restore: **0.19-0.22s** (target <= 2s) -> PASS
+- Clipboard round-trip: **0.14-0.23s** (target <= 1.5s) -> PASS
 
-## Critical Remaining Gap
-The remaining launch-blocking technical gap is large-file CSV anonymize latency.
-
-What is done already:
-- row-batched detector invocation in CSV/XLSX handlers
-- restore fast-path skips for non-token cells
-- benchmark tooling + CI gate added
-
-What still needs focused engine work:
-- deeper detector batching beyond row-level
-- regex-first short-circuit for high-confidence entities
-- optional accuracy/performance profile selection for large structured sheets
+Delta vs prior baseline:
+- English anonymize: **48.95s -> 1.96s** (~96.0% faster)
+- Hebrew anonymize: **20.00s -> 1.71s** (~91.4% faster)
 
 ## Key Paths Updated in This Pass
 - `src/cowork_shield/cli.py`
@@ -128,5 +130,5 @@ What still needs focused engine work:
 - `PERFORMANCE.md`
 
 ## Overall
-Trust and recoverability controls are strong and test-backed.
-The main unresolved commercialization risk is anonymize throughput on 10k-row CSV full-detection workflows.
+Trust, recoverability, and performance controls are strong and test-backed.
+Current build meets the Phase 2 v11 launch performance budgets for CSV anonymize/restore and clipboard round-trip.

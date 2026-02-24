@@ -18,7 +18,11 @@ from cowork_shield.clipboard.operations import (
     restore_clipboard,
     shield_clipboard,
 )
-from cowork_shield.detection.engine import HEBREW_BACKEND_CHOICES, LANGUAGE_CHOICES
+from cowork_shield.detection.engine import (
+    DETECTION_MODE_CHOICES,
+    HEBREW_BACKEND_CHOICES,
+    LANGUAGE_CHOICES,
+)
 from cowork_shield.governance.reporting import (
     export_sanitization_reports,
     read_sanitization_reports,
@@ -558,6 +562,13 @@ def logs_delete(workspace_name, all_audits, yes):
     help="Minimum Presidio confidence score (0.0-1.0)",
 )
 @click.option(
+    "--detection-mode",
+    type=click.Choice(DETECTION_MODE_CHOICES, case_sensitive=False),
+    default="balanced",
+    show_default=True,
+    help="Detection profile: speed, balanced, or accurate.",
+)
+@click.option(
     "--language",
     type=click.Choice(LANGUAGE_CHOICES, case_sensitive=False),
     default="auto",
@@ -635,6 +646,7 @@ def anonymize(
     workspace,
     ttl,
     score_threshold,
+    detection_mode,
     language,
     hebrew_backend,
     hebrew_stanza_model,
@@ -713,6 +725,7 @@ def anonymize(
         pipeline = AnonymizePipeline(
             ctx,
             score_threshold=score_threshold,
+            detection_mode=detection_mode.lower(),
             language=language.lower(),
             hebrew_backend=hebrew_backend.lower(),
             hebrew_stanza_model=hebrew_stanza_model.strip(),
@@ -927,6 +940,13 @@ def restore(file, output, workspace, license_key):
     help="Benchmark language mode.",
 )
 @click.option(
+    "--detection-mode",
+    type=click.Choice(DETECTION_MODE_CHOICES, case_sensitive=False),
+    default="balanced",
+    show_default=True,
+    help="Detection profile used during anonymize benchmark.",
+)
+@click.option(
     "-o",
     "--output",
     "output_path",
@@ -949,6 +969,7 @@ def benchmark_performance_cmd(
     workspace,
     rows,
     language,
+    detection_mode,
     output_path,
     enforce_gates,
     license_key,
@@ -976,6 +997,7 @@ def benchmark_performance_cmd(
                 ctx,
                 rows=rows,
                 language=language.lower(),
+                detection_mode=detection_mode.lower(),
             )
 
         json_path = write_benchmark_result_json(
@@ -1000,6 +1022,7 @@ def benchmark_performance_cmd(
         console.print(f"  Captured:   {result.captured_at}")
         console.print(f"  Workspace:  {result.workspace_name}")
         console.print(f"  Language:   {result.language}")
+        console.print(f"  Mode:       {result.detection_mode}")
         console.print(f"  Rows:       {result.rows}")
         console.print(f"  Anonymize:  {result.anonymize_seconds:.2f}s (target <= 8.00s)")
         console.print(f"  Restore:    {result.restore_seconds:.2f}s (target <= 2.00s)")
@@ -1037,6 +1060,13 @@ def benchmark_performance_cmd(
 @click.option(
     "--score-threshold", type=float, default=0.7,
     help="Minimum Presidio confidence score (0.0-1.0)",
+)
+@click.option(
+    "--detection-mode",
+    type=click.Choice(DETECTION_MODE_CHOICES, case_sensitive=False),
+    default="balanced",
+    show_default=True,
+    help="Detection profile: speed, balanced, or accurate.",
 )
 @click.option(
     "--language",
@@ -1087,6 +1117,7 @@ def benchmark_performance_cmd(
 def shield_clipboard_cmd(
     workspace,
     score_threshold,
+    detection_mode,
     language,
     hebrew_backend,
     hebrew_stanza_model,
@@ -1131,6 +1162,7 @@ def shield_clipboard_cmd(
             result = shield_clipboard(
                 ctx,
                 score_threshold=score_threshold,
+                detection_mode=detection_mode.lower(),
                 language=language.lower(),
                 hebrew_backend=hebrew_backend.lower(),
                 hebrew_stanza_model=hebrew_stanza_model.strip(),
