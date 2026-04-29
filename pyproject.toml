@@ -1,6 +1,6 @@
 [project]
 name = "cloakroom"
-version = "0.1.0"
+version = "0.2.0"
 description = "Reversible document anonymization for safe LLM usage"
 requires-python = ">=3.11"
 license = {text = "Proprietary"}
