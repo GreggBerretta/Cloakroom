@@ -206,7 +206,7 @@ The team wants AI help summarizing the [STRATEGY_00001] and [STRATEGY_00002] bef
 
 - **GitHub CI** — draft PR [#1](https://github.com/GreggBerretta/Cloakroom/pull/1) is open. Hosted `ci.yml`, `security-scan.yml`, and `ec15-gate.yml` passed on 2026-04-29 after the Phase 1 branch was pushed.
 - **GitHub performance gate** — manually dispatched `performance-gate.yml` passed on hosted macOS after the NER template-cache fix. Observed hosted run: anonymize 5.82s, restore 0.53s, clipboard 0.49s against the 8.00s / 2.00s / 1.50s gates.
-- **Phase 2 hosted checks** — must rerun on GitHub after the Phase 2 commit is pushed.
+- **Phase 2 hosted checks** — passed on 2026-04-29 after the audit/report safety commit was pushed: CI tests, Security Scan dependency audit, EC-15, and manual `performance-gate.yml`.
 - **Local closeout validation** — completed on 2026-04-29:
   - `uv run pytest -q` -> 314 passed, 1 warning
   - `swift build --package-path wrapper/CloakroomWrapper` -> pass
@@ -235,6 +235,8 @@ The team wants AI help summarizing the [STRATEGY_00001] and [STRATEGY_00002] bef
 | Dependency audit (`pip-audit --local`) | Pass; no known vulnerabilities found |
 | Local performance gate (EN, 10k rows) | Pass: anonymize 1.64s, restore 0.22s, clipboard 0.23s |
 | Phase 2 audit/report safety focused tests | Pass: governance/reporting, logging/observability, pipeline no-leak integration, EC-15 |
+| Phase 2 hosted PR checks | Pass: CI tests, Security Scan dependency audit, EC-15 |
+| Phase 2 hosted performance gate | Pass: anonymize 5.56s, restore 0.52s, clipboard 0.44s |
 
 ### 4.2 Failing
 
@@ -274,6 +276,16 @@ Manual workflow run: <https://github.com/GreggBerretta/Cloakroom/actions/runs/25
 | English 10k CSV anonymize (balanced) | 5.82 s | <= 8 s | PASS |
 | English 10k CSV restore | 0.53 s | <= 2 s | PASS |
 | Clipboard round trip | 0.49 s | <= 1.5 s | PASS |
+
+### Phase 2 hosted closeout run (2026-04-29)
+
+Manual workflow run: <https://github.com/GreggBerretta/Cloakroom/actions/runs/25115584234>
+
+| Operation | Result | Target | State |
+|---|---|---|---|
+| English 10k CSV anonymize (balanced) | 5.56 s | <= 8 s | PASS |
+| English 10k CSV restore | 0.52 s | <= 2 s | PASS |
+| Clipboard round trip | 0.44 s | <= 1.5 s | PASS |
 
 ### Pre-optimization baseline
 
@@ -315,9 +327,8 @@ Delta vs. pre-optimization: English anonymize 48.95 s → 1.96 s (~96% faster); 
 
 | Item | Why | Phase |
 |---|---|---|
-| Human-review and merge draft PR [#1](https://github.com/GreggBerretta/Cloakroom/pull/1) when ready | Branch is pushed, PR is open, and local + hosted closeout gates have passed | Phase 1 closeout |
+| Human-review and merge draft PR [#1](https://github.com/GreggBerretta/Cloakroom/pull/1) when ready | Branch is pushed, PR is open, and local + hosted closeout gates have passed through Phase 2 | Phase 1/2 closeout |
 | Run `gh auth refresh -s workflow` and land the deferred CI filter cleanup (drop `codex/**`, leave `main` + `pull_request`) | The change is already prepared; the OAuth token didn't have `workflow` scope when we tried | Phase 0 leftover |
-| Push Phase 2 audit/report safety commit and let GitHub checks rerun | Local implementation is green; hosted PR checks need the new commit before merge | Phase 2 closeout |
 
 ### 6.2 Demo build-out (per the execution plan)
 
