@@ -16,21 +16,21 @@ This document is the operational state of the Cloakroom codebase. The Master PRD
 |---|---|
 | Canonical tree | `/Users/greggberretta/Documents/New project/Cloakroom` |
 | GitHub default branch | `main` (changed 2026-04-29 from `codex/handoff-b-status-doc`) |
-| Active feature branch | `feature/demo-rules-and-il-entities` (2 commits ahead of `main`, **not yet pushed**) |
+| Active feature branch | `feature/demo-rules-and-il-entities` (pushed; draft PR [#1](https://github.com/GreggBerretta/Cloakroom/pull/1)) |
 | Stale local branches | `codex/handoff-b-status-doc`, `feature/rename-to-cloakroom` (kept as historical refs; deletable) |
 | Stale remote branches | `codex/handoff-b-status-doc`, `codex/handoff-b-status-doc-clean` (consider deleting after Phase 1 PR merges) |
-| Working tree | Clean |
+| Working tree | Clean after latest status commit |
 | Engine tests | **309 passing** on the active branch |
-| Swift build | Last verified pass on 2026-04-29 (gap catalog) — not re-run since |
+| Swift build | Pass on 2026-04-29 during Phase 1 closeout |
 
-### Commits ahead of main on the active branch
+### Functional commits ahead of main on the active branch
 
 ```
 03b2aa0  fix(detection): full international phone capture, stable token ordering, single-token dates
 08d55f6  feat(detection): demo rules engine + first-class IL/HE entity taxonomy
 ```
 
-These are committed locally but not yet pushed and not yet in a pull request.
+These functional commits, plus status-documentation commits, are pushed to origin and opened as draft PR [#1](https://github.com/GreggBerretta/Cloakroom/pull/1).
 
 ---
 
@@ -163,10 +163,16 @@ The team wants AI help summarizing the [STRATEGY_00001] and [STRATEGY_00002] bef
 
 11 sensitive items shielded, 0 leaked, byte-identical round trip.
 
-### 3.4 Tests / gates NOT yet run on the current branch
+### 3.4 Tests / gates still pending on GitHub
 
-- **GitHub CI** — branch not pushed, no PR, so `ci.yml`, `security-scan.yml`, `ec15-gate.yml`, and `performance-gate.yml` have not run on the Phase 1 commits.
-- **Swift wrapper invariants and `swift build`** — not re-run after Phase 1 (no Swift code changed, but should be re-validated in CI on the PR).
+- **GitHub CI** — draft PR [#1](https://github.com/GreggBerretta/Cloakroom/pull/1) is open; GitHub-hosted `ci.yml`, `security-scan.yml`, `ec15-gate.yml`, and `performance-gate.yml` still need to report on the pushed branch.
+- **Local closeout validation** — completed on 2026-04-29:
+  - `uv run pytest -q` -> 309 passed, 1 warning
+  - `swift build --package-path wrapper/CloakroomWrapper` -> pass
+  - `swift run --package-path wrapper/CloakroomWrapper wrapper-invariant-checks` -> pass
+  - `uv run python scripts/demo_walkthrough.py` -> pass
+  - `uv run --with pip-audit pip-audit --local` -> no known vulnerabilities found
+  - `uv run cloakroom benchmark-performance --rows 10000 --language en --enforce-gates --output /tmp/cloakroom_phase1_performance_gate.json` -> Gate PASS
 
 ---
 
@@ -183,6 +189,10 @@ The team wants AI help summarizing the [STRATEGY_00001] and [STRATEGY_00002] bef
 | Anonymize → Restore byte-identical round trip (EN + HE) | Pass |
 | First-class IL/HE token emission | Pass |
 | TEUDAT_ZEHUT no longer folded into US_SSN | Pass (regression test added) |
+| Swift wrapper build | Pass |
+| Wrapper invariant harness | Pass |
+| Dependency audit (`pip-audit --local`) | Pass; no known vulnerabilities found |
+| Local performance gate (EN, 10k rows) | Pass: anonymize 2.03s, restore 0.22s, clipboard 0.19s |
 
 ### 4.2 Failing
 
@@ -196,9 +206,22 @@ None at this moment.
 
 ---
 
-## 5. Performance Baselines (from 2026-02-24, no regression run since)
+## 5. Performance Baselines
 
-These numbers come from the prior status report and have not been re-measured against the Phase 1 demo-rule and replacer changes. The Phase 1 changes affect detection layering and tokenization order but should not change steady-state throughput materially. A re-measurement on the PR branch is recommended before merge.
+The historical numbers below come from the prior status report. A local English performance regression gate was re-run on 2026-04-29 after the Phase 1 demo-rule and replacer changes; GitHub-hosted performance workflow results are still pending on draft PR [#1](https://github.com/GreggBerretta/Cloakroom/pull/1).
+
+### Phase 1 local closeout run (2026-04-29)
+
+Command:
+```
+uv run cloakroom benchmark-performance --rows 10000 --language en --enforce-gates --output /tmp/cloakroom_phase1_performance_gate.json
+```
+
+| Operation | Result | Target | State |
+|---|---|---|---|
+| English 10k CSV anonymize (balanced) | 2.03 s | <= 8 s | PASS |
+| English 10k CSV restore | 0.22 s | <= 2 s | PASS |
+| Clipboard round trip | 0.19 s | <= 1.5 s | PASS |
 
 ### Pre-optimization baseline
 
@@ -240,9 +263,9 @@ Delta vs. pre-optimization: English anonymize 48.95 s → 1.96 s (~96% faster); 
 
 | Item | Why | Phase |
 |---|---|---|
-| Push `feature/demo-rules-and-il-entities` and open a PR against `main` | Get full CI / security / performance gates green on this branch and a review surface | Phase 1 closeout |
+| Monitor draft PR [#1](https://github.com/GreggBerretta/Cloakroom/pull/1) until GitHub CI / security / performance gates report | Branch is pushed and PR is open; hosted checks still need to complete before merge | Phase 1 closeout |
 | Run `gh auth refresh -s workflow` and land the deferred CI filter cleanup (drop `codex/**`, leave `main` + `pull_request`) | The change is already prepared; the OAuth token didn't have `workflow` scope when we tried | Phase 0 leftover |
-| Re-run benchmark gate on the PR branch | Confirm the demo-rule and replacer changes haven't moved the perf baseline | Phase 0 / 1 closeout |
+| Re-run benchmark gate on GitHub PR branch | Local benchmark passed; hosted workflow still needs to confirm on GitHub runners | Phase 0 / 1 closeout |
 | Phase 2 — audit / report safety hardening | Trust Center cannot honestly use live audit data until file paths are hashed and reports cannot leak filenames containing PII | Phase 2 |
 
 ### 6.2 Demo build-out (per the execution plan)
