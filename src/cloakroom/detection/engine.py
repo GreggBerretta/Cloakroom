@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 import hashlib
 import importlib.metadata
@@ -485,6 +486,11 @@ class DetectionEngine:
         self._cell_detection_cache: dict[tuple[str, str], tuple[DetectedEntity, ...]] = {}
         self._cell_cache_max_entries = 5000
         self._cell_cache_max_text_len = 256
+        self._ner_template_cache: dict[
+            tuple[str, tuple[str, ...], str],
+            tuple[_NerTemplate, ...],
+        ] = {}
+        self._ner_template_cache_max_entries = 5000
 
     @property
     def model_lock_key(self) -> str:
@@ -752,23 +758,19 @@ class DetectionEngine:
             masked_text_by_idx.append(masked_text)
             run_ner_by_idx.append(self._should_run_ner(masked_text))
 
-        ner_templates_cache: dict[str, list[_NerTemplate]] = {}
         ner_entities_by_idx: list[list[DetectedEntity]] = [[] for _ in texts]
         for idx, text in enumerate(texts):
             if not run_ner_by_idx[idx]:
                 continue
 
             masked_text = masked_text_by_idx[idx]
-            cache_key = self._canonicalize_ner_text(masked_text)
-            templates = ner_templates_cache.get(cache_key)
-            if templates is None:
-                templates = self._analyze_ner_templates(
-                    analyzer=analyzer,
-                    text=cache_key,
-                    language=language,
-                    entities_to_analyze=entities_to_analyze,
-                )
-                ner_templates_cache[cache_key] = templates
+            canonical_text = self._canonicalize_ner_text(masked_text)
+            templates = self._get_or_analyze_ner_templates(
+                analyzer=analyzer,
+                text=canonical_text,
+                language=language,
+                entities_to_analyze=entities_to_analyze,
+            )
 
             ner_entities_by_idx[idx] = self._materialize_ner_entities(
                 templates,
@@ -792,6 +794,32 @@ class DetectionEngine:
                 ]
             )
         return results
+
+    def _get_or_analyze_ner_templates(
+        self,
+        *,
+        analyzer: AnalyzerEngine,
+        text: str,
+        language: str,
+        entities_to_analyze: list[str],
+    ) -> tuple[_NerTemplate, ...]:
+        cache_key = (language, tuple(entities_to_analyze), text)
+        cached = self._ner_template_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        templates = tuple(
+            self._analyze_ner_templates(
+                analyzer=analyzer,
+                text=text,
+                language=language,
+                entities_to_analyze=entities_to_analyze,
+            )
+        )
+        self._ner_template_cache[cache_key] = templates
+        if len(self._ner_template_cache) > self._ner_template_cache_max_entries:
+            self._ner_template_cache.pop(next(iter(self._ner_template_cache)))
+        return templates
 
     def _analyze_ner_templates(
         self,
@@ -838,7 +866,7 @@ class DetectionEngine:
 
     def _materialize_ner_entities(
         self,
-        templates: list[_NerTemplate],
+        templates: Sequence[_NerTemplate],
         *,
         original_text: str,
     ) -> list[DetectedEntity]:

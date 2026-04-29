@@ -20,7 +20,7 @@ This document is the operational state of the Cloakroom codebase. The Master PRD
 | Stale local branches | `codex/handoff-b-status-doc`, `feature/rename-to-cloakroom` (kept as historical refs; deletable) |
 | Stale remote branches | `codex/handoff-b-status-doc`, `codex/handoff-b-status-doc-clean` (consider deleting after Phase 1 PR merges) |
 | Working tree | Clean after latest status commit |
-| Engine tests | **309 passing** on the active branch |
+| Engine tests | **310 passing** on the active branch |
 | Swift build | Pass on 2026-04-29 during Phase 1 closeout |
 
 ### Functional commits ahead of main on the active branch
@@ -67,6 +67,7 @@ Commits `08d55f6` and `03b2aa0` on `feature/demo-rules-and-il-entities`.
 - New `_detect_demo_entities()` runs as the first pre-pass; merge precedence is **demo rules → regex prefilter → Presidio NER**.
 - `_promote_localized_entity()` post-processes NER hits: `PERSON` whose value contains Hebrew script is promoted to `HE_PERSON`.
 - `_TARGET_PRESIDIO_ENTITIES` sourced from `entity_types.SUPPORTED_PRESIDIO_ENTITIES`, which excludes Cloakroom-only types.
+- NER template cache now persists across `detect_many()` batches on the same engine instance, so spreadsheet-shaped corpora reuse analyzer work across the full CSV run instead of repeating it per batch.
 
 **Regex prefilter** ([src/cloakroom/detection/regex_prefilter.py](src/cloakroom/detection/regex_prefilter.py))
 - IL_ID 9-digit pattern produces `TEUDAT_ZEHUT` (was `SSN`).
@@ -127,8 +128,8 @@ These were validated before Phase 0/1 work and remain green; Phase 1 did not tou
 
 | Suite | Pre-Phase-1 | Now |
 |---|---|---|
-| Total Python tests | 297 | **309** |
-| Phase-1 additions | — | 12 (7 demo-rule unit, 5 demo end-to-end) |
+| Total Python tests | 297 | **310** |
+| Phase-1 additions | — | 13 (7 demo-rule unit, 5 demo end-to-end, 1 NER template-cache regression) |
 
 Run command: `uv run pytest -q` (canonical tree).
 
@@ -167,12 +168,12 @@ The team wants AI help summarizing the [STRATEGY_00001] and [STRATEGY_00002] bef
 
 - **GitHub CI** — draft PR [#1](https://github.com/GreggBerretta/Cloakroom/pull/1) is open; GitHub-hosted `ci.yml`, `security-scan.yml`, `ec15-gate.yml`, and `performance-gate.yml` still need to report on the pushed branch.
 - **Local closeout validation** — completed on 2026-04-29:
-  - `uv run pytest -q` -> 309 passed, 1 warning
+  - `uv run pytest -q` -> 310 passed, 1 warning
   - `swift build --package-path wrapper/CloakroomWrapper` -> pass
   - `swift run --package-path wrapper/CloakroomWrapper wrapper-invariant-checks` -> pass
   - `uv run python scripts/demo_walkthrough.py` -> pass
   - `uv run --with pip-audit pip-audit --local` -> no known vulnerabilities found
-  - `uv run cloakroom benchmark-performance --rows 10000 --language en --enforce-gates --output /tmp/cloakroom_phase1_performance_gate.json` -> Gate PASS
+  - `uv run cloakroom benchmark-performance --rows 10000 --language en --enforce-gates --output /tmp/cloakroom_phase1_performance_gate_after_cache.json` -> Gate PASS
 
 ---
 
@@ -182,7 +183,7 @@ The team wants AI help summarizing the [STRATEGY_00001] and [STRATEGY_00002] bef
 
 | Gate | State |
 |---|---|
-| Engine correctness (309 tests) | Pass |
+| Engine correctness (310 tests) | Pass |
 | Demo-rule unit tests (7) | Pass |
 | End-to-end killer-demo flow on EN sample | Pass |
 | Strict PRD §6 token-layout assertion | Pass |
@@ -192,7 +193,7 @@ The team wants AI help summarizing the [STRATEGY_00001] and [STRATEGY_00002] bef
 | Swift wrapper build | Pass |
 | Wrapper invariant harness | Pass |
 | Dependency audit (`pip-audit --local`) | Pass; no known vulnerabilities found |
-| Local performance gate (EN, 10k rows) | Pass: anonymize 2.03s, restore 0.22s, clipboard 0.19s |
+| Local performance gate (EN, 10k rows) | Pass: anonymize 1.64s, restore 0.22s, clipboard 0.23s |
 
 ### 4.2 Failing
 
@@ -208,20 +209,20 @@ None at this moment.
 
 ## 5. Performance Baselines
 
-The historical numbers below come from the prior status report. A local English performance regression gate was re-run on 2026-04-29 after the Phase 1 demo-rule and replacer changes; GitHub-hosted performance workflow results are still pending on draft PR [#1](https://github.com/GreggBerretta/Cloakroom/pull/1).
+The historical numbers below come from the prior status report. A local English performance regression gate was re-run on 2026-04-29 after the Phase 1 demo-rule, replacer, and NER template-cache changes; GitHub-hosted performance workflow results are still pending on draft PR [#1](https://github.com/GreggBerretta/Cloakroom/pull/1).
 
 ### Phase 1 local closeout run (2026-04-29)
 
 Command:
 ```
-uv run cloakroom benchmark-performance --rows 10000 --language en --enforce-gates --output /tmp/cloakroom_phase1_performance_gate.json
+uv run cloakroom benchmark-performance --rows 10000 --language en --enforce-gates --output /tmp/cloakroom_phase1_performance_gate_after_cache.json
 ```
 
 | Operation | Result | Target | State |
 |---|---|---|---|
-| English 10k CSV anonymize (balanced) | 2.03 s | <= 8 s | PASS |
+| English 10k CSV anonymize (balanced) | 1.64 s | <= 8 s | PASS |
 | English 10k CSV restore | 0.22 s | <= 2 s | PASS |
-| Clipboard round trip | 0.19 s | <= 1.5 s | PASS |
+| Clipboard round trip | 0.23 s | <= 1.5 s | PASS |
 
 ### Pre-optimization baseline
 
@@ -318,7 +319,7 @@ uv run python -m spacy download en_core_web_lg
 uv run python -m spacy download he_core_news_sm   # or xx_ent_wiki_sm
 
 # 2. Full test suite.
-uv run pytest -q                           # expect 309 passed
+uv run pytest -q                           # expect 310 passed
 
 # 3. EC-15 state integrity gate.
 uv run pytest -q tests/test_state_integrity/test_ec15_state_integrity.py
