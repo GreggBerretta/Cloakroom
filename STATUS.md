@@ -293,6 +293,7 @@ Browser verification used installed Chrome headless/CDP fallback because Browser
 - **GitHub performance gate** — manually dispatched `performance-gate.yml` passed on hosted macOS after the NER template-cache fix. Observed hosted run: anonymize 5.82s, restore 0.53s, clipboard 0.49s against the 8.00s / 2.00s / 1.50s gates.
 - **Phase 2 hosted checks** — passed on 2026-04-29 after the audit/report safety commit was pushed: CI tests, Security Scan dependency audit, EC-15, and manual `performance-gate.yml`.
 - **Phase 3 hosted checks** — passed on 2026-04-29 after the demo backend commit was pushed: CI tests, Security Scan dependency audit, EC-15, and manual `performance-gate.yml`.
+- **Phase 4 hosted checks** — passed on 2026-04-29 after the demo UI commit was pushed: CI tests, Security Scan dependency audit, EC-15, and manual `performance-gate.yml`.
 - **Local closeout validation** — completed on 2026-04-29:
   - `uv run pytest -q` -> 321 passed, 1 warning
   - `swift build --package-path wrapper/CloakroomWrapper` -> pass
@@ -331,6 +332,8 @@ Browser verification used installed Chrome headless/CDP fallback because Browser
 | Phase 3 hosted performance gate | Pass: anonymize 6.34s, restore 0.45s, clipboard 0.58s |
 | Phase 4 demo UI/static tests | Pass: `tests/test_demo_server/test_app.py` |
 | Phase 4 browser smoke | Pass: Chrome headless/CDP desktop Shield, mobile layout, Restore block, Trust Center |
+| Phase 4 hosted PR checks | Pass: CI tests, Security Scan dependency audit, EC-15 |
+| Phase 4 hosted performance gate | Pass: anonymize 7.49s, restore 0.70s, clipboard 0.62s |
 
 ### 4.2 Failing
 
@@ -391,6 +394,16 @@ Manual workflow run: <https://github.com/GreggBerretta/Cloakroom/actions/runs/25
 | English 10k CSV restore | 0.45 s | <= 2 s | PASS |
 | Clipboard round trip | 0.58 s | <= 1.5 s | PASS |
 
+### Phase 4 hosted closeout run (2026-04-29)
+
+Manual workflow run: <https://github.com/GreggBerretta/Cloakroom/actions/runs/25130332726>
+
+| Operation | Result | Target | State |
+|---|---|---|---|
+| English 10k CSV anonymize (balanced) | 7.49 s | <= 8 s | PASS |
+| English 10k CSV restore | 0.70 s | <= 2 s | PASS |
+| Clipboard round trip | 0.62 s | <= 1.5 s | PASS |
+
 ### Pre-optimization baseline
 
 | Operation | Result |
@@ -431,7 +444,7 @@ Delta vs. pre-optimization: English anonymize 48.95 s → 1.96 s (~96% faster); 
 
 | Item | Why | Phase |
 |---|---|---|
-| Human-review and merge draft PR [#1](https://github.com/GreggBerretta/Cloakroom/pull/1) when ready | Branch is pushed, PR is open, and local closeout gates have passed through Phase 4. Hosted checks need to complete after the Phase 4 push. | Phase 1/2/3/4 closeout |
+| Human-review and merge draft PR [#1](https://github.com/GreggBerretta/Cloakroom/pull/1) when ready | Branch is pushed, PR is open, and local + hosted closeout gates have passed through Phase 4 | Phase 1/2/3/4 closeout |
 | Run `gh auth refresh -s workflow` and land the deferred CI filter cleanup (drop `codex/**`, leave `main` + `pull_request`) | The change is already prepared; the OAuth token didn't have `workflow` scope when we tried | Phase 0 leftover |
 
 ### 6.2 Demo build-out (per the execution plan)
