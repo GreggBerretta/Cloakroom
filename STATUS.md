@@ -30,7 +30,7 @@ This document is the operational state of the Cloakroom codebase. The Master PRD
 08d55f6  feat(detection): demo rules engine + first-class IL/HE entity taxonomy
 ```
 
-These functional commits, plus status-documentation commits, are pushed to origin and opened as draft PR [#1](https://github.com/GreggBerretta/Cloakroom/pull/1).
+These functional commits, the NER template-cache performance fix, and status-documentation commits are pushed to origin and opened as draft PR [#1](https://github.com/GreggBerretta/Cloakroom/pull/1).
 
 ---
 
@@ -164,9 +164,10 @@ The team wants AI help summarizing the [STRATEGY_00001] and [STRATEGY_00002] bef
 
 11 sensitive items shielded, 0 leaked, byte-identical round trip.
 
-### 3.4 Tests / gates still pending on GitHub
+### 3.4 GitHub-hosted closeout validation
 
-- **GitHub CI** — draft PR [#1](https://github.com/GreggBerretta/Cloakroom/pull/1) is open; GitHub-hosted `ci.yml`, `security-scan.yml`, `ec15-gate.yml`, and `performance-gate.yml` still need to report on the pushed branch.
+- **GitHub CI** — draft PR [#1](https://github.com/GreggBerretta/Cloakroom/pull/1) is open. Hosted `ci.yml`, `security-scan.yml`, and `ec15-gate.yml` passed on 2026-04-29 after the Phase 1 branch was pushed.
+- **GitHub performance gate** — manually dispatched `performance-gate.yml` passed on hosted macOS after the NER template-cache fix. Observed hosted run: anonymize 5.82s, restore 0.53s, clipboard 0.49s against the 8.00s / 2.00s / 1.50s gates.
 - **Local closeout validation** — completed on 2026-04-29:
   - `uv run pytest -q` -> 310 passed, 1 warning
   - `swift build --package-path wrapper/CloakroomWrapper` -> pass
@@ -209,7 +210,7 @@ None at this moment.
 
 ## 5. Performance Baselines
 
-The historical numbers below come from the prior status report. A local English performance regression gate was re-run on 2026-04-29 after the Phase 1 demo-rule, replacer, and NER template-cache changes; GitHub-hosted performance workflow results are still pending on draft PR [#1](https://github.com/GreggBerretta/Cloakroom/pull/1).
+The historical numbers below come from the prior status report. A local English performance regression gate was re-run on 2026-04-29 after the Phase 1 demo-rule, replacer, and NER template-cache changes. The GitHub-hosted performance workflow also passed on draft PR [#1](https://github.com/GreggBerretta/Cloakroom/pull/1).
 
 ### Phase 1 local closeout run (2026-04-29)
 
@@ -223,6 +224,16 @@ uv run cloakroom benchmark-performance --rows 10000 --language en --enforce-gate
 | English 10k CSV anonymize (balanced) | 1.64 s | <= 8 s | PASS |
 | English 10k CSV restore | 0.22 s | <= 2 s | PASS |
 | Clipboard round trip | 0.23 s | <= 1.5 s | PASS |
+
+### Phase 1 hosted closeout run (2026-04-29)
+
+Manual workflow run: <https://github.com/GreggBerretta/Cloakroom/actions/runs/25114759087>
+
+| Operation | Result | Target | State |
+|---|---|---|---|
+| English 10k CSV anonymize (balanced) | 5.82 s | <= 8 s | PASS |
+| English 10k CSV restore | 0.53 s | <= 2 s | PASS |
+| Clipboard round trip | 0.49 s | <= 1.5 s | PASS |
 
 ### Pre-optimization baseline
 
@@ -264,9 +275,8 @@ Delta vs. pre-optimization: English anonymize 48.95 s → 1.96 s (~96% faster); 
 
 | Item | Why | Phase |
 |---|---|---|
-| Monitor draft PR [#1](https://github.com/GreggBerretta/Cloakroom/pull/1) until GitHub CI / security / performance gates report | Branch is pushed and PR is open; hosted checks still need to complete before merge | Phase 1 closeout |
+| Human-review and merge draft PR [#1](https://github.com/GreggBerretta/Cloakroom/pull/1) when ready | Branch is pushed, PR is open, and local + hosted closeout gates have passed | Phase 1 closeout |
 | Run `gh auth refresh -s workflow` and land the deferred CI filter cleanup (drop `codex/**`, leave `main` + `pull_request`) | The change is already prepared; the OAuth token didn't have `workflow` scope when we tried | Phase 0 leftover |
-| Re-run benchmark gate on GitHub PR branch | Local benchmark passed; hosted workflow still needs to confirm on GitHub runners | Phase 0 / 1 closeout |
 | Phase 2 — audit / report safety hardening | Trust Center cannot honestly use live audit data until file paths are hashed and reports cannot leak filenames containing PII | Phase 2 |
 
 ### 6.2 Demo build-out (per the execution plan)
@@ -299,7 +309,7 @@ Tracked but not blocking the buyer demo:
 
 | Risk | Why it matters | Mitigation |
 |---|---|---|
-| Phase 1 not yet under CI | A subtle regression could ship into `main` if we merge without GitHub workflows running | Push and open the PR before any Phase 2 work |
+| Follow-up pushes can stale PR checks | A final documentation or review fix can require checks to be re-run before merge | Re-check PR [#1](https://github.com/GreggBerretta/Cloakroom/pull/1) immediately before merging |
 | Audit code may still write raw `file_path` in some report writers (per gap catalog 2026-04-29) | A Trust Center built on top of leaky data would publicly contradict its own claims | Phase 2 must complete before any UI surfaces audit data |
 | Hebrew NER quality in this dev env | HE_PERSON detection on the bundled HE sample relies on `xx_ent_wiki_sm` fallback | Production install: `python -m spacy download he_core_news_sm`. Phase 1 explicitly does not assert HE_PERSON on the bundled sample. |
 | Demo-rule false positives in non-demo workspaces | Default ruleset includes `Acme Health`, `Project Lantern`, etc. — fine for the killer demo, wrong for a real customer | Default ruleset is opt-in via the `demo_ruleset=` constructor argument; pipeline default is `None`, so no production change. |
