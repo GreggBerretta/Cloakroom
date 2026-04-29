@@ -24,7 +24,7 @@ from cloakroom.hallucination.formatter import format_hallucination_flags
 from cloakroom.logging import append_audit_event, log_event
 from cloakroom.models import now_iso
 from cloakroom.pipeline.anonymize import HANDLER_MAP
-from cloakroom.verification.verifier import IntegrityVerifier
+from cloakroom.verification.verifier import IntegrityVerifier, compute_sha256
 from cloakroom.workspace.manager import WorkspaceContext
 
 
@@ -152,6 +152,7 @@ class RestorePipeline:
                 self._ctx.persist()
 
                 self_destruct_enabled = bool(self._ctx.vault_data.self_destruct_on_restore)
+                input_hash = compute_sha256(input_path)
                 if self_destruct_enabled:
                     self._ctx.token_generator.load_state({}, {})
                     self._ctx.vault_data.mappings = {}
@@ -162,7 +163,10 @@ class RestorePipeline:
                     append_audit_event(
                         self._ctx,
                         event="workspace_self_destruct_after_restore",
-                        fields={"file_path": str(input_path)},
+                        fields={
+                            "file_path": str(input_path),
+                            "file_hash": input_hash,
+                        },
                     )
 
                 duration_ms = int((perf_counter() - started) * 1000)
@@ -186,6 +190,7 @@ class RestorePipeline:
                     event="file_restored",
                     fields={
                         "file_path": str(input_path),
+                        "file_hash": input_hash,
                         "file_ext": suffix,
                         "duration_ms": duration_ms,
                         "integrity_check": True,
@@ -206,6 +211,7 @@ class RestorePipeline:
                         operation="restore",
                         file_path=str(input_path),
                         file_ext=suffix,
+                        file_hash=input_hash,
                         duration_ms=duration_ms,
                         language="auto",
                         entity_counts=build_restore_entity_counts(

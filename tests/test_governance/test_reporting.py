@@ -10,6 +10,7 @@ from cloakroom.governance.reporting import (
     build_anonymize_entity_counts,
     export_sanitization_reports,
     read_sanitization_reports,
+    report_log_path_for_workspace_dir,
 )
 from cloakroom.models import EntityType, ReplacementRecord, VaultData, now_iso
 from cloakroom.tokenizer.generator import TokenGenerator
@@ -69,6 +70,7 @@ def test_append_read_export_sanitization_reports(tmp_path):
         operation="anonymize",
         file_path="/tmp/sample.csv",
         file_ext=".csv",
+        file_hash="a" * 64,
         duration_ms=1234,
         language="en",
         entity_counts={"PERSON": 2, "EMAIL": 1},
@@ -80,9 +82,98 @@ def test_append_read_export_sanitization_reports(tmp_path):
     assert len(rows) == 1
     assert rows[0]["operation"] == "anonymize"
     assert rows[0]["entities_total"] == 3
+    assert rows[0]["file_hash"] == "a" * 64
+    assert rows[0]["file_label_safe"] == "csv:aaaaaaaaaaaa"
+    assert "file_path" not in rows[0]
+    assert rows[0]["chain_verified"] is True
 
     export_path = tmp_path / "report.json"
     result_path = export_sanitization_reports(ctx, output_path=export_path, fmt="json")
     payload = json.loads(result_path.read_text(encoding="utf-8"))
     assert payload["workspace_id"] == ctx.workspace_id
     assert len(payload["reports"]) == 1
+
+
+def test_report_storage_never_persists_raw_pii_filename(tmp_path):
+    ctx = _make_ctx(tmp_path)
+    toxic_path = tmp_path / "Jane Smith john.smith@acme.com 123-45-6789 Project Lantern.csv"
+
+    append_sanitization_report(
+        ctx,
+        operation="anonymize",
+        file_path=str(toxic_path),
+        file_ext=".csv",
+        file_hash="b" * 64,
+        duration_ms=10,
+        language="en",
+        entity_counts={"PERSON": 1},
+        entities_total=1,
+        metadata={"file_path": str(toxic_path)},
+    )
+
+    report_path = report_log_path_for_workspace_dir(ctx.vault.path.parent)
+    raw_report = report_path.read_text(encoding="utf-8")
+    exported_path = export_sanitization_reports(
+        ctx,
+        output_path=tmp_path / "safe-report.json",
+        fmt="json",
+    )
+    raw_export = exported_path.read_text(encoding="utf-8")
+
+    for payload in (raw_report, raw_export):
+        assert str(toxic_path) not in payload
+        assert "Jane Smith" not in payload
+        assert "john.smith@acme.com" not in payload
+        assert "123-45-6789" not in payload
+        assert "Project Lantern" not in payload
+
+    rows = read_sanitization_reports(ctx)
+    assert rows[0]["file_hash"] == "b" * 64
+    assert rows[0]["file_label_safe"] == "csv:bbbbbbbbbbbb"
+    assert "file_path" not in rows[0]
+    assert "file_path" not in rows[0]["metadata"]
+    assert "file_hash" in rows[0]["metadata"]
+    assert "file_label_safe" in rows[0]["metadata"]
+
+
+def test_report_hash_chain_detects_tampering(tmp_path):
+    ctx = _make_ctx(tmp_path)
+
+    first = append_sanitization_report(
+        ctx,
+        operation="anonymize",
+        file_path="/tmp/first.csv",
+        file_ext=".csv",
+        file_hash="c" * 64,
+        duration_ms=10,
+        language="en",
+        entity_counts={"PERSON": 1},
+        entities_total=1,
+    )
+    second = append_sanitization_report(
+        ctx,
+        operation="restore",
+        file_path="/tmp/second.csv",
+        file_ext=".csv",
+        file_hash="d" * 64,
+        duration_ms=12,
+        language="auto",
+        entity_counts={"PERSON": 1},
+        entities_total=1,
+        tokens_restored=1,
+    )
+
+    assert first["report_hash"]
+    assert second["prev_report_hash"] == first["report_hash"]
+    assert second["chain_index"] == first["chain_index"] + 1
+    assert [row["chain_verified"] for row in read_sanitization_reports(ctx)] == [True, True]
+
+    report_path = report_log_path_for_workspace_dir(ctx.vault.path.parent)
+    lines = report_path.read_text(encoding="utf-8").splitlines()
+    tampered = json.loads(lines[0])
+    tampered["entities_total"] = 99
+    lines[0] = json.dumps(tampered, sort_keys=True, ensure_ascii=False)
+    report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    tampered_rows = read_sanitization_reports(ctx)
+    assert [row["chain_verified"] for row in tampered_rows] == [False, False]

@@ -278,6 +278,7 @@ class AnonymizePipeline:
                     event="file_anonymized",
                     fields={
                         "file_path": str(input_path),
+                        "file_hash": file_record.file_hash_before,
                         "file_ext": suffix,
                         "entity_count": file_record.entities_found,
                         "duration_ms": duration_ms,
@@ -291,6 +292,7 @@ class AnonymizePipeline:
                             "override_type": "force_reanonymize",
                             "reason": self._override_reason,
                             "file_path": str(input_path),
+                            "file_hash": file_record.file_hash_before,
                         },
                     )
 
@@ -300,6 +302,7 @@ class AnonymizePipeline:
                         operation="anonymize",
                         file_path=str(input_path),
                         file_ext=suffix,
+                        file_hash=file_record.file_hash_before,
                         duration_ms=duration_ms,
                         language=self._language,
                         entity_counts=build_anonymize_entity_counts(

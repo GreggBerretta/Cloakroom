@@ -162,6 +162,7 @@ def shield_clipboard(
             operation="clipboard_anonymize",
             file_path=CLIPBOARD_FILE_ID,
             file_ext="clipboard",
+            file_hash=input_hash,
             duration_ms=duration_ms,
             language=language,
             entity_counts=build_anonymize_entity_counts(records, language=language),
@@ -251,11 +252,13 @@ def restore_clipboard(workspace_ctx: WorkspaceContext) -> ClipboardRestoreResult
             workspace_ctx.persist()
 
         duration_ms = int((perf_counter() - started) * 1000)
+        input_hash = _sha256_text(tokenized_text)
         append_sanitization_report(
             workspace_ctx,
             operation="clipboard_restore",
             file_path=CLIPBOARD_FILE_ID,
             file_ext="clipboard",
+            file_hash=input_hash,
             duration_ms=duration_ms,
             language="auto",
             entity_counts=build_restore_entity_counts(

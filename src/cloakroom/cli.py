@@ -1787,7 +1787,7 @@ def workspace_report_show(workspace_name, limit):
             table.add_row(
                 str(row.get("timestamp", "")),
                 str(row.get("operation", "")),
-                str(row.get("file_ext", "")),
+                str(row.get("file_label_safe") or row.get("file_ext", "")),
                 str(row.get("duration_ms", "")),
                 str(row.get("entities_total", "")),
                 count_text,
