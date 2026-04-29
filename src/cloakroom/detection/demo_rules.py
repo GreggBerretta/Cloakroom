@@ -157,4 +157,13 @@ def build_default_demo_ruleset() -> DemoRuleSet:
         flags=re.IGNORECASE,
     )
 
+    # Renewal dates and other "Month DD, YYYY" forms — keep them as a single
+    # DATE token instead of letting Presidio split into ["June 30", "2026"].
+    rs.add_regex(
+        EntityType.DATE,
+        r"\b(?:January|February|March|April|May|June|July|August|September|October|November|December)"
+        r"\s+\d{1,2},\s*\d{4}\b",
+        flags=re.IGNORECASE,
+    )
+
     return rs

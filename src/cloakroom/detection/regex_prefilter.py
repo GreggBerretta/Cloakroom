@@ -14,18 +14,25 @@ from cloakroom.models import DetectedEntity, EntityType
 
 
 EMAIL_PATTERN = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
+# International phones: optional country code prefix, then 2+ groups of 2-4
+# digits separated by space/dot/dash. Anchored with lookbehind so the leading
+# "+" doesn't collide with a preceding word boundary on numbers like
+# "+44 20 7946 0182".
 PHONE_PATTERN = re.compile(
-    r"\b(?:\+?\d{1,3}[-.\s]?)?(?:\(?\d{2,4}\)?[-.\s]?)?\d{3}[-.\s]?\d{4}\b"
+    r"(?<![\w+])\+?\d{1,3}(?:[-.\s]\(?\d{2,4}\)?){1,4}(?![\w])"
+    r"|"
+    r"\b\d{3,4}[-.\s]\d{3,4}\b"
 )
 CREDIT_CARD_PATTERN = re.compile(r"\b(?:\d{4}[-\s]?){3}\d{4}\b")
 US_SSN_PATTERN = re.compile(r"\b\d{3}-\d{2}-\d{4}\b")
 IL_ID_PATTERN = re.compile(r"\b\d{9}\b")
-# Israeli phone: 0XX-XXX-XXXX or +972-XX-XXX-XXXX (mobile and landline)
+# Israeli phone: 0XX-XXX-XXXX or +972-XX-XXX-XXXX (mobile and landline).
+# Lookbehind avoids the +/word-boundary issue: \b doesn't match before '+'.
 IL_PHONE_PATTERN = re.compile(
-    r"\b(?:\+972[-.\s]?|0)(?:5[0-9]|[2-489])[-.\s]?\d{3}[-.\s]?\d{4}\b"
+    r"(?<![\w+])(?:\+972[-.\s]?|0)(?:5[0-9]|[2-489])[-.\s]?\d{3}[-.\s]?\d{4}(?!\w)"
 )
 # Israeli bank account: bank-branch-account (2-3 / 2-4 / 6-9 digits)
-IL_BANK_ACCOUNT_PATTERN = re.compile(r"\b\d{2,3}-\d{2,4}-\d{6,9}\b")
+IL_BANK_ACCOUNT_PATTERN = re.compile(r"(?<!\w)\d{2,3}-\d{2,4}-\d{6,9}(?!\w)")
 
 
 @dataclass(frozen=True)

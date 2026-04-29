@@ -23,19 +23,24 @@ class TextReplacer:
     ) -> tuple[str, list[ReplacementRecord]]:
         """Replace all detected entities in text with their tokens.
 
-        Returns the modified text and a list of replacement records.
+        Tokens are minted in left-to-right text order so that the first
+        occurrence of an entity in source order gets _00001, the second gets
+        _00002, and so on. Replacement is then applied right-to-left to keep
+        earlier offsets valid as we splice text.
         """
         if not entities:
             return text, []
 
-        records: list[ReplacementRecord] = []
-        # Sort entities by start position descending (right-to-left)
-        sorted_entities = sorted(entities, key=lambda e: e.start, reverse=True)
-
-        for entity in sorted_entities:
-            token = token_generator.get_or_create_token(
+        forward_order = sorted(entities, key=lambda e: (e.start, e.end))
+        tokens_by_id: dict[int, "Token"] = {}
+        for entity in forward_order:
+            tokens_by_id[id(entity)] = token_generator.get_or_create_token(
                 entity.text, entity.entity_type, source_file=source_file
             )
+
+        records: list[ReplacementRecord] = []
+        for entity in sorted(entities, key=lambda e: e.start, reverse=True):
+            token = tokens_by_id[id(entity)]
             text = text[: entity.start] + token.token_text + text[entity.end :]
             records.append(
                 ReplacementRecord(

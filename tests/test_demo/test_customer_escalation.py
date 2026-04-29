@@ -94,6 +94,32 @@ def test_english_sample_tokens_match_killer_demo_prd(workspace_ctx, tmp_path):
     assert result.entities_found >= len(expected_tokens)
 
 
+def test_english_sample_matches_prd_token_layout(workspace_ctx, tmp_path):
+    """The AI-safe output matches the Killer Demo PRD section 6 layout."""
+    input_path = _write_sample(tmp_path, "customer_escalation_en.md")
+    output_path = tmp_path / "ai_safe.md"
+
+    AnonymizePipeline(
+        workspace_ctx,
+        score_threshold=0.5,
+        demo_ruleset=build_default_demo_ruleset(),
+        language="en",
+    ).run(input_path, output_path)
+
+    expected = (
+        "[PERSON_00001] at [ORG_00001] emailed [EMAIL_00001] about the "
+        "[PROJECT_00001] renewal.\n"
+        "The account is [CUSTOMER_ID_00001] and includes a "
+        "[CONTRACT_VALUE_00001] contract with an [PRICING_TERM_00001] "
+        "exception.\n"
+        "Her phone number is [PHONE_00001] and the account address is "
+        "[ADDRESS_00001].\n"
+        "The team wants AI help summarizing the [STRATEGY_00001] and "
+        "[STRATEGY_00002] before the [DATE_00001] renewal meeting.\n"
+    )
+    assert output_path.read_text(encoding="utf-8") == expected
+
+
 def test_english_sample_round_trip_byte_identical(workspace_ctx, tmp_path):
     """Anonymize then restore returns exactly the original text."""
     original_text = load_sample("customer_escalation_en.md")
