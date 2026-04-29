@@ -137,6 +137,17 @@ def build_anonymize_entity_counts(
     return dict(counts)
 
 
+_LOCALIZED_ENTITY_TYPES = frozenset(
+    {
+        EntityType.HE_PERSON,
+        EntityType.TEUDAT_ZEHUT,
+        EntityType.IL_PHONE,
+        EntityType.IL_ADDRESS,
+        EntityType.IL_BANK_ACCOUNT,
+    }
+)
+
+
 def build_restore_entity_counts(
     *,
     token_texts: set[str],
@@ -155,6 +166,10 @@ def build_restore_entity_counts(
             counts[f"COLUMN_{prefix}"] += 1
             continue
 
+        if entity_type in _LOCALIZED_ENTITY_TYPES:
+            counts[entity_type.token_prefix] += 1
+            continue
+
         original = originals.get(token, "")
         if original and _HEBREW_SCRIPT_RE.search(original):
             counts[f"HE_{entity_type.token_prefix}"] += 1
@@ -167,6 +182,9 @@ def _count_key_for_record(record: ReplacementRecord, *, language: str) -> str:
     if record.entity_type is EntityType.COLUMN:
         prefix = _extract_column_prefix_from_token(record.token_text) or "UNKNOWN"
         return f"COLUMN_{prefix}"
+
+    if record.entity_type in _LOCALIZED_ENTITY_TYPES:
+        return record.entity_type.token_prefix
 
     is_hebrew = language == "he" or bool(_HEBREW_SCRIPT_RE.search(record.original_value))
     if is_hebrew:

@@ -9,7 +9,13 @@ from typing import Protocol
 
 
 class EntityType(str, Enum):
-    """Supported PII entity types, mapping to Presidio entity type strings."""
+    """Supported PII and confidential-data entity types.
+
+    Members whose .value matches a Presidio entity string are produced by
+    Presidio NER. Members whose .value is Cloakroom-specific (e.g. PROJECT,
+    TEUDAT_ZEHUT) are produced only by the regex prefilter, the demo-rule
+    pre-pass, or post-detection promotion (e.g. HE_PERSON).
+    """
 
     PERSON = "PERSON"
     ORGANIZATION = "ORGANIZATION"
@@ -22,6 +28,21 @@ class EntityType(str, Enum):
     IP_ADDRESS = "IP_ADDRESS"
     URL = "URL"
     COLUMN = "COLUMN"
+
+    # Israeli/Hebrew first-class types
+    HE_PERSON = "HE_PERSON"
+    TEUDAT_ZEHUT = "TEUDAT_ZEHUT"
+    IL_PHONE = "IL_PHONE"
+    IL_ADDRESS = "IL_ADDRESS"
+    IL_BANK_ACCOUNT = "IL_BANK_ACCOUNT"
+
+    # Confidential business data types (driven by demo rules)
+    PROJECT = "PROJECT"
+    CONTRACT_VALUE = "CONTRACT_VALUE"
+    PRICING_TERM = "PRICING_TERM"
+    STRATEGY = "STRATEGY"
+    ADDRESS_LINE = "ADDRESS_LINE"
+    CUSTOMER_ID = "CUSTOMER_ID"
 
     @property
     def token_prefix(self) -> str:
@@ -38,6 +59,17 @@ class EntityType(str, Enum):
             EntityType.IP_ADDRESS: "IP",
             EntityType.URL: "URL",
             EntityType.COLUMN: "COL",
+            EntityType.HE_PERSON: "HE_PERSON",
+            EntityType.TEUDAT_ZEHUT: "TEUDAT_ZEHUT",
+            EntityType.IL_PHONE: "IL_PHONE",
+            EntityType.IL_ADDRESS: "IL_ADDRESS",
+            EntityType.IL_BANK_ACCOUNT: "IL_BANK_ACCOUNT",
+            EntityType.PROJECT: "PROJECT",
+            EntityType.CONTRACT_VALUE: "CONTRACT_VALUE",
+            EntityType.PRICING_TERM: "PRICING_TERM",
+            EntityType.STRATEGY: "STRATEGY",
+            EntityType.ADDRESS_LINE: "ADDRESS",
+            EntityType.CUSTOMER_ID: "CUSTOMER_ID",
         }
         return _prefixes[self]
 

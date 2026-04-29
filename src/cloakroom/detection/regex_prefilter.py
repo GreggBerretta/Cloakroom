@@ -20,6 +20,12 @@ PHONE_PATTERN = re.compile(
 CREDIT_CARD_PATTERN = re.compile(r"\b(?:\d{4}[-\s]?){3}\d{4}\b")
 US_SSN_PATTERN = re.compile(r"\b\d{3}-\d{2}-\d{4}\b")
 IL_ID_PATTERN = re.compile(r"\b\d{9}\b")
+# Israeli phone: 0XX-XXX-XXXX or +972-XX-XXX-XXXX (mobile and landline)
+IL_PHONE_PATTERN = re.compile(
+    r"\b(?:\+972[-.\s]?|0)(?:5[0-9]|[2-489])[-.\s]?\d{3}[-.\s]?\d{4}\b"
+)
+# Israeli bank account: bank-branch-account (2-3 / 2-4 / 6-9 digits)
+IL_BANK_ACCOUNT_PATTERN = re.compile(r"\b\d{2,3}-\d{2,4}-\d{6,9}\b")
 
 
 @dataclass(frozen=True)
@@ -34,23 +40,31 @@ class RegexPreFilter:
 
     def __init__(self) -> None:
         # Order matters: more specific / higher-risk patterns first.
+        # IL-specific patterns appear before generic phone so an Israeli mobile
+        # like 050-123-4567 is tagged IL_PHONE, not the generic PHONE family.
         self._common_specs = [
             _PatternSpec(CREDIT_CARD_PATTERN, EntityType.CREDIT_CARD),
             _PatternSpec(US_SSN_PATTERN, EntityType.SSN),
             _PatternSpec(EMAIL_PATTERN, EntityType.EMAIL),
+            _PatternSpec(IL_PHONE_PATTERN, EntityType.IL_PHONE),
+            _PatternSpec(IL_BANK_ACCOUNT_PATTERN, EntityType.IL_BANK_ACCOUNT),
             _PatternSpec(PHONE_PATTERN, EntityType.PHONE),
         ]
         self._hebrew_extra_specs = [
-            _PatternSpec(IL_ID_PATTERN, EntityType.SSN),
+            _PatternSpec(IL_ID_PATTERN, EntityType.TEUDAT_ZEHUT),
         ]
 
     def extract_entities(self, text: str, *, language: str) -> list[DetectedEntity]:
         if not text or not text.strip():
             return []
 
-        specs = list(self._common_specs)
+        # In Hebrew text, IL-specific patterns (e.g. 9-digit Teudat Zehut) must
+        # match before the generic phone pattern, otherwise a bare ID like
+        # "312345674" gets falsely tagged as PHONE.
         if language == "he":
-            specs.extend(self._hebrew_extra_specs)
+            specs = list(self._hebrew_extra_specs) + list(self._common_specs)
+        else:
+            specs = list(self._common_specs)
 
         detected: list[DetectedEntity] = []
         taken_spans: list[tuple[int, int]] = []
