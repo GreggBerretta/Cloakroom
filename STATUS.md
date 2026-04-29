@@ -1,134 +1,331 @@
-# Cloakroom Status Report
+# Cloakroom — Build Status
 
-## Snapshot
-- Date: 2026-02-24
-- Repo: `GreggBerretta/cloakroom`
-- Branch: `feature/rename-to-cloakroom`
-- Scope Baseline: `HANDOFF_B.md`
-- Execution Layer: HANDOFF_B core + Phase 2 v11 launch-prep additions
-- Performance Baseline Revision: post-optimization detection pipeline (regex prefilter + batched detection + canonicalized NER caching)
+**Date:** 2026-04-29
+**Canonical working tree:** `/Users/greggberretta/Documents/New project/Cloakroom`
+**Origin:** `https://github.com/GreggBerretta/Cloakroom` (public)
+**Engine version:** `0.2.0` (pyproject + `__init__.py` + CLI aligned)
+**Supersedes:** the 2026-02-24 status report previously at this path. Performance baselines from that snapshot are folded into §5.
 
-## Executive Status
-The repository is in a strong validation state with hardened fail-closed behavior and expanded governance/monetization controls.
+This document is the operational state of the Cloakroom codebase. The Master PRD ([docs/Cloakroom_Master_PRD.md](docs/Cloakroom_Master_PRD.md)) defines what the product is. The Killer Demo PRD ([docs/Cloakroom_Killer_Demo_PRD.md](docs/Cloakroom_Killer_Demo_PRD.md)) defines the buyer-facing demo. The current execution plan lives at `~/.claude/plans/users-greggberretta-documents-new-proje-merry-flask.md`. This file tracks where we are against that plan today, with enough detail for an engineer picking this up cold.
 
-Implemented and validated in this branch:
-- deterministic replay + model hash lock
-- fail-closed restore with hallucination/mutation blocking
-- column-selective spreadsheet anonymization
-- Hebrew support (auto/spacy/stanza/transformers pathways)
-- PDF input-only conversion pipeline (PDF -> MD/DOCX)
-- hybrid IPC core (Mode A stdio, Mode B AF_UNIX)
-- Textual TUI + Gradio UI
-- EC-15 state integrity harness
-- logging/observability guardrails (sanitized logs, signed audit events)
+---
 
-New v11 launch-prep additions in this update:
-- Free TTL policy hardening (`24h` fixed) + Pro TTL cap (`<= 30 days`)
-- workspace governance commands: close/recover/purge + self-destruct-on-restore toggle
-- auditor-safe sanitization reports after operations
-- Pro-gated report export (JSON/PDF)
-- benchmark command + CI performance gate workflow
-- native menu-bar shell Swift target scaffold (`cloakroom-menubar`)
-- opt-in local crash-report capture for handled wrapper failures
+## 1. Source of Truth
 
-## Feature Coverage
+| Item | State |
+|---|---|
+| Canonical tree | `/Users/greggberretta/Documents/New project/Cloakroom` |
+| GitHub default branch | `main` (changed 2026-04-29 from `codex/handoff-b-status-doc`) |
+| Active feature branch | `feature/demo-rules-and-il-entities` (2 commits ahead of `main`, **not yet pushed**) |
+| Stale local branches | `codex/handoff-b-status-doc`, `feature/rename-to-cloakroom` (kept as historical refs; deletable) |
+| Stale remote branches | `codex/handoff-b-status-doc`, `codex/handoff-b-status-doc-clean` (consider deleting after Phase 1 PR merges) |
+| Working tree | Clean |
+| Engine tests | **309 passing** on the active branch |
+| Swift build | Last verified pass on 2026-04-29 (gap catalog) — not re-run since |
 
-### Core File Support
-- `.txt`: anonymize/restore
-- `.md`: anonymize/restore
-- `.csv`: anonymize/restore + column-selective mode
-- `.xlsx`: anonymize/restore + formula preservation + lossy chart/image gate
-- `.docx`: anonymize/restore
-- `.pdf`: anonymize only (input-only), output to `.md`/`.docx`
+### Commits ahead of main on the active branch
 
-### Spreadsheet Selective Controls
-- `--columns` supports letters and headers
-- `inspect-columns` preflight available
-- `--detect-pii/--no-detect-pii` interaction enforced
-- column token namespace separated from PII token namespace
+```
+03b2aa0  fix(detection): full international phone capture, stable token ordering, single-token dates
+08d55f6  feat(detection): demo rules engine + first-class IL/HE entity taxonomy
+```
 
-### Governance v1
-- `workspace close <name>` creates encrypted snapshot under `~/.cloakroom/backups/<workspace_id>/`
-- `workspace recover --workspace <name> <backup-path>` restores vault snapshot
-- `workspace purge <name>` performs mandatory backup then clears mappings/records
-- `workspace set-governance <name> --self-destruct-on-restore` supported
-- `workspace report show` and Pro-gated `workspace report export --format json|pdf`
+These are committed locally but not yet pushed and not yet in a pull request.
 
-### Licensing / Monetization Policy
-- license key validation available in CLI/UI/IPC paths
-- free-tier restore quota tracking with visible counters
-- Pro gates enforced for:
-  - column-selective mode
-  - advanced Hebrew backends
-  - long TTL
-  - report export
+---
 
-### Wrapper / Native Shell
-- Wrapper core remains state-machine based with protocol validation
-- New Swift executable target:
-  - `wrapper/CloakroomWrapper/Sources/CloakroomMenuBar/main.swift`
-  - status item, workspace switching, clipboard actions, login toggle, UI launch hooks
-- Sparkle updater path is currently a safe fallback (release page open) pending full Sparkle linking
+## 2. What Has Been Built
 
-## Validation Results
+Phases reference the execution plan. Phases 0 and 1 are complete; Phase 2 onward is not started.
 
-### Python Test Suite
-- Command: `uv run pytest -q`
-- Result: **297 passed, 0 failed**
+### Phase 0 — Source-of-truth lock (DONE)
 
-### Swift Wrapper Build
-- Command: `swift build` (in `wrapper/CloakroomWrapper`)
-- Result: **PASS**
+Commit `4ea8eff` on `main`.
 
-### Wrapper Invariant Harness
-- Command: `swift run wrapper-invariant-checks`
-- Result: **PASS**
+- `docs/` directory created with the four governing documents:
+  - [docs/Cloakroom_Master_PRD.md](docs/Cloakroom_Master_PRD.md)
+  - [docs/Cloakroom_Status_Testing_and_Release_Gates.md](docs/Cloakroom_Status_Testing_and_Release_Gates.md)
+  - [docs/Cloakroom_Killer_Demo_PRD.md](docs/Cloakroom_Killer_Demo_PRD.md)
+  - [docs/Cloakroom_Current_State_and_Gaps.md](docs/Cloakroom_Current_State_and_Gaps.md)
+- Versions aligned: `pyproject.toml` 0.1.0 → 0.2.0 to match `src/cloakroom/__init__.py` and `cloakroom --version`.
+- `tests/test_cli.py` updated to assert `0.2.0`.
+- Local `main` fast-forwarded onto the rebrand work; pushed to origin.
+- GitHub default branch flipped to `main`.
 
-## Performance Baselines (Revised)
+### Phase 1 — Demo rules + first-class IL/HE entity taxonomy (DONE)
 
-### Prior Baseline (Pre-Optimization)
-- English 10k CSV anonymize: **48.95s** (FAIL)
-- Hebrew 10k CSV anonymize: **20.00s** (FAIL)
-- 10k CSV restore: **0.14-0.16s** (PASS)
-- Clipboard round-trip: **0.17-0.18s** (PASS)
+Commits `08d55f6` and `03b2aa0` on `feature/demo-rules-and-il-entities`.
 
-### Current Baseline (Post-Optimization, 2026-02-24)
-Benchmark command used:
-- `uv run cloakroom benchmark-performance -w perf-opt2-en-balanced --rows 10000 --language en --detection-mode balanced -o /tmp/cloakroom_perf2_en_balanced.json`
-- `uv run cloakroom benchmark-performance -w perf-opt2-en-speed --rows 10000 --language en --detection-mode speed -o /tmp/cloakroom_perf2_en_speed.json`
-- `uv run cloakroom benchmark-performance -w perf-opt2-he-balanced --rows 10000 --language he --detection-mode balanced -o /tmp/cloakroom_perf2_he_balanced.json`
-- `uv run cloakroom benchmark-performance -w perf-opt2-he-speed --rows 10000 --language he --detection-mode speed -o /tmp/cloakroom_perf2_he_speed.json`
+**EntityType expansion** ([src/cloakroom/models.py](src/cloakroom/models.py))
+- Israeli/Hebrew first-class members: `HE_PERSON`, `TEUDAT_ZEHUT`, `IL_PHONE`, `IL_ADDRESS`, `IL_BANK_ACCOUNT`.
+- Confidential business types: `PROJECT`, `CONTRACT_VALUE`, `PRICING_TERM`, `STRATEGY`, `ADDRESS_LINE` (token prefix `ADDRESS` to match PRD §6 example), `CUSTOMER_ID`.
+- Token-prefix entries for every new member.
+- `HEBREW_ENTITY_MAPPING` no longer folds `TEUDAT_ZEHUT` into `US_SSN`.
 
-Measured:
-- English 10k CSV anonymize (balanced): **1.96s** (target <= 8s) -> PASS
-- English 10k CSV anonymize (speed): **1.95s** (target <= 8s) -> PASS
-- Hebrew 10k CSV anonymize (balanced): **1.71s** (target <= 8s) -> PASS
-- Hebrew 10k CSV anonymize (speed): **1.60s** (target <= 8s) -> PASS
-- 10k CSV restore: **0.19-0.22s** (target <= 2s) -> PASS
-- Clipboard round-trip: **0.14-0.23s** (target <= 1.5s) -> PASS
+**Detection engine** ([src/cloakroom/detection/engine.py](src/cloakroom/detection/engine.py))
+- Optional `demo_ruleset: DemoRuleSet` parameter.
+- New `_detect_demo_entities()` runs as the first pre-pass; merge precedence is **demo rules → regex prefilter → Presidio NER**.
+- `_promote_localized_entity()` post-processes NER hits: `PERSON` whose value contains Hebrew script is promoted to `HE_PERSON`.
+- `_TARGET_PRESIDIO_ENTITIES` sourced from `entity_types.SUPPORTED_PRESIDIO_ENTITIES`, which excludes Cloakroom-only types.
 
-Delta vs prior baseline:
-- English anonymize: **48.95s -> 1.96s** (~96.0% faster)
-- Hebrew anonymize: **20.00s -> 1.71s** (~91.4% faster)
+**Regex prefilter** ([src/cloakroom/detection/regex_prefilter.py](src/cloakroom/detection/regex_prefilter.py))
+- IL_ID 9-digit pattern produces `TEUDAT_ZEHUT` (was `SSN`).
+- New IL_PHONE pattern (`+972` and `0XX` shapes); produces `IL_PHONE`.
+- New IL_BANK_ACCOUNT pattern; produces `IL_BANK_ACCOUNT`.
+- Hebrew-language pre-pass order: IL specs run **before** generic phone, so a bare 9-digit Teudat Zehut isn't mis-tagged as `PHONE`.
+- Generic PHONE pattern rewritten to capture full international forms (`+44 20 7946 0182`); was previously truncating to a single trailing 4-digit group.
+- Anchors use `(?<![\w+])` / `(?!\w)` so leading `+` doesn't break `\b`.
 
-## Key Paths Updated in This Pass
-- `src/cloakroom/cli.py`
-- `src/cloakroom/licensing.py`
-- `src/cloakroom/workspace/manager.py`
-- `src/cloakroom/pipeline/anonymize.py`
-- `src/cloakroom/pipeline/restore.py`
-- `src/cloakroom/clipboard/operations.py`
-- `src/cloakroom/governance/reporting.py`
-- `src/cloakroom/handlers/csv_handler.py`
-- `src/cloakroom/handlers/xlsx.py`
-- `src/cloakroom/performance/benchmark.py`
-- `wrapper/CloakroomWrapper/Package.swift`
-- `wrapper/CloakroomWrapper/Sources/CloakroomMenuBar/main.swift`
-- `.github/workflows/performance-gate.yml`
-- `INSTALL.md`
-- `TROUBLESHOOTING.md`
-- `PERFORMANCE.md`
+**Demo rule engine** ([src/cloakroom/detection/demo_rules.py](src/cloakroom/detection/demo_rules.py))
+- New module. `DemoRuleSet` with `add_dictionary()`, `add_regex()`, `detect()`.
+- Dictionary entries are case-insensitive whole-token matches via lookarounds (so `"Lantern"` does not match inside `"Lanterns"`).
+- `_resolve_overlaps()` keeps the higher-scoring (or longer at equal score) match.
+- `build_default_demo_ruleset()` ships the killer-demo coverage: `Acme Health`, `Project Lantern`, `Q3 churn containment plan`, `pre-acquisition integration risk`, `15 Farringdon Street, London`, `EU-CUST-{n}`, `$X.XM` contract values, `N percent discount`, `Month DD, YYYY` dates.
 
-## Overall
-Trust, recoverability, and performance controls are strong and test-backed.
-Current build meets the Phase 2 v11 launch performance budgets for CSV anonymize/restore and clipboard round-trip.
+**Tokenizer** ([src/cloakroom/tokenizer/replacer.py](src/cloakroom/tokenizer/replacer.py))
+- `replace_entities()` previously minted tokens in the same right-to-left order it spliced text, so the *rightmost* entity got `_00001`. Split into two passes: mint left-to-right (so source order determines counter), replace right-to-left (so offsets stay valid).
+
+**Pipeline** ([src/cloakroom/pipeline/anonymize.py](src/cloakroom/pipeline/anonymize.py))
+- `AnonymizePipeline.__init__` accepts `demo_ruleset`; threads through to `DetectionEngine`.
+- No change for callers that omit the parameter.
+
+**Reporting** ([src/cloakroom/governance/reporting.py](src/cloakroom/governance/reporting.py))
+- `_LOCALIZED_ENTITY_TYPES` set ensures `HE_PERSON` / `IL_*` use their own token prefix in entity-count breakdowns instead of being double-prefixed (`HE_HE_PERSON`) by the legacy Hebrew-script promotion path.
+
+**Demo fixtures** ([src/cloakroom/demo/](src/cloakroom/demo/))
+- `customer_escalation_en.md` — exact Customer Escalation memo from PRD §6.
+- `customer_escalation_he.md` — Hebrew/Israeli companion: HE_PERSON, TEUDAT_ZEHUT, IL_PHONE, IL_ADDRESS, IL_BANK_ACCOUNT.
+- `__init__.py` exposes `load_sample(name)`.
+
+**Local walkthrough** ([scripts/demo_walkthrough.py](scripts/demo_walkthrough.py))
+- Terminal sanity check: full Shield → simulated AI → Restore loop on the bundled English sample. Run with `uv run python scripts/demo_walkthrough.py`.
+
+### Already-built capabilities preserved from the prior 2026-02-24 status
+
+These were validated before Phase 0/1 work and remain green; Phase 1 did not touch them:
+
+- Deterministic replay + model hash lock.
+- Fail-closed restore with hallucination/mutation/dropped-token blocking.
+- Column-selective spreadsheet anonymization (`--columns`, `inspect-columns`, `--detect-pii/--no-detect-pii`).
+- Hebrew support across `auto / spacy / stanza / transformers` backends.
+- PDF input-only conversion pipeline (PDF → MD/DOCX). Restore from PDF intentionally rejected.
+- Hybrid IPC core (Mode A stdio, Mode B AF_UNIX).
+- Textual TUI + Gradio web UI (internal-grade; not the killer demo).
+- EC-15 state-integrity harness.
+- Sanitized logs and signed audit events.
+- Workspace governance commands: `close`, `recover`, `purge`, `set-governance --self-destruct-on-restore`, `report show`, Pro-gated `report export --format json|pdf`.
+- Free TTL fixed at 24h, Pro TTL cap at 30 days, Pro gating for column-selective mode, advanced Hebrew backends, long TTL, and report export.
+- File support: `.txt`, `.md`, `.csv` (with dialect preservation), `.xlsx` (formula preservation + lossy chart/image gate), `.docx` (run redistribution), `.pdf` (input-only).
+- Native Mac menu-bar Swift target (`cloakroom-menubar`) — scaffold-grade only.
+- Performance gate workflow + benchmark CLI.
+
+---
+
+## 3. What Has Been Tested
+
+### 3.1 Test counts
+
+| Suite | Pre-Phase-1 | Now |
+|---|---|---|
+| Total Python tests | 297 | **309** |
+| Phase-1 additions | — | 12 (7 demo-rule unit, 5 demo end-to-end) |
+
+Run command: `uv run pytest -q` (canonical tree).
+
+### 3.2 New tests added in Phase 1
+
+[tests/test_detection/test_demo_rules.py](tests/test_detection/test_demo_rules.py):
+- `test_dictionary_match_case_insensitive`
+- `test_dictionary_does_not_match_substring`
+- `test_regex_match`
+- `test_default_ruleset_finds_killer_demo_entities`
+- `test_overlapping_rules_keep_higher_score`
+- `test_no_rules_returns_empty`
+- `test_empty_text_returns_empty`
+
+[tests/test_demo/test_customer_escalation.py](tests/test_demo/test_customer_escalation.py):
+- `test_english_sample_tokens_match_killer_demo_prd` — every expected token present, no PII strings leaked into AI-safe output.
+- `test_english_sample_matches_prd_token_layout` — **strict byte-for-byte match against the PRD §6 example**.
+- `test_english_sample_round_trip_byte_identical` — Anonymize → Restore returns the original file byte-identically.
+- `test_hebrew_sample_produces_first_class_il_tokens` — `[TEUDAT_ZEHUT_*]`, `[IL_PHONE_*]`, `[IL_BANK_ACCOUNT_*]` present; no `[SSN_*]` folding.
+- `test_hebrew_sample_round_trip_byte_identical`.
+
+### 3.3 Walkthrough output (current state)
+
+`uv run python scripts/demo_walkthrough.py` produces:
+
+```
+[PERSON_00001] at [ORG_00001] emailed [EMAIL_00001] about the [PROJECT_00001] renewal.
+The account is [CUSTOMER_ID_00001] and includes a [CONTRACT_VALUE_00001] contract with an [PRICING_TERM_00001] exception.
+Her phone number is [PHONE_00001] and the account address is [ADDRESS_00001].
+The team wants AI help summarizing the [STRATEGY_00001] and [STRATEGY_00002] before the [DATE_00001] renewal meeting.
+```
+
+11 sensitive items shielded, 0 leaked, byte-identical round trip.
+
+### 3.4 Tests / gates NOT yet run on the current branch
+
+- **GitHub CI** — branch not pushed, no PR, so `ci.yml`, `security-scan.yml`, `ec15-gate.yml`, and `performance-gate.yml` have not run on the Phase 1 commits.
+- **Swift wrapper invariants and `swift build`** — not re-run after Phase 1 (no Swift code changed, but should be re-validated in CI on the PR).
+
+---
+
+## 4. What Has Passed or Failed
+
+### 4.1 Passing
+
+| Gate | State |
+|---|---|
+| Engine correctness (309 tests) | Pass |
+| Demo-rule unit tests (7) | Pass |
+| End-to-end killer-demo flow on EN sample | Pass |
+| Strict PRD §6 token-layout assertion | Pass |
+| Anonymize → Restore byte-identical round trip (EN + HE) | Pass |
+| First-class IL/HE token emission | Pass |
+| TEUDAT_ZEHUT no longer folded into US_SSN | Pass (regression test added) |
+
+### 4.2 Failing
+
+None at this moment.
+
+### 4.3 Known regressions / edge cases left open
+
+- **US area-code-with-parens phones** (`(415) 555-1234`) capture only `555-1234`. Not in the killer-demo sample; acceptable for now.
+- **Hebrew NER quality is limited in this dev env.** Only `xx_ent_wiki_sm` (multilingual fallback) is installed; `he_core_news_sm` is missing. So HE_PERSON detection on the bundled HE sample is best-effort. The deterministic IL_PHONE / TEUDAT_ZEHUT / IL_BANK_ACCOUNT paths work regardless. Production install must `python -m spacy download he_core_news_sm`. Phase 1 tests deliberately do not assert HE_PERSON on the bundled sample for this reason.
+- **Multi-pass LLM mutation acceptance gate** is still synthetic, not against real LLM outputs (per gap catalog). The killer-demo Phase 5 covers one canned mutated-token sample; broader real-LLM corpus gate stays Master-PRD scope.
+
+---
+
+## 5. Performance Baselines (from 2026-02-24, no regression run since)
+
+These numbers come from the prior status report and have not been re-measured against the Phase 1 demo-rule and replacer changes. The Phase 1 changes affect detection layering and tokenization order but should not change steady-state throughput materially. A re-measurement on the PR branch is recommended before merge.
+
+### Pre-optimization baseline
+
+| Operation | Result |
+|---|---|
+| English 10k CSV anonymize | 48.95 s — FAIL |
+| Hebrew 10k CSV anonymize | 20.00 s — FAIL |
+| 10k CSV restore | 0.14–0.16 s — PASS |
+| Clipboard round trip | 0.17–0.18 s — PASS |
+
+### Post-optimization baseline (2026-02-24)
+
+Benchmark commands:
+```
+uv run cloakroom benchmark-performance -w perf-opt2-en-balanced --rows 10000 --language en --detection-mode balanced -o /tmp/cloakroom_perf2_en_balanced.json
+uv run cloakroom benchmark-performance -w perf-opt2-en-speed    --rows 10000 --language en --detection-mode speed    -o /tmp/cloakroom_perf2_en_speed.json
+uv run cloakroom benchmark-performance -w perf-opt2-he-balanced --rows 10000 --language he --detection-mode balanced -o /tmp/cloakroom_perf2_he_balanced.json
+uv run cloakroom benchmark-performance -w perf-opt2-he-speed    --rows 10000 --language he --detection-mode speed    -o /tmp/cloakroom_perf2_he_speed.json
+```
+
+| Operation | Result | Target | State |
+|---|---|---|---|
+| English 10k CSV anonymize (balanced) | 1.96 s | ≤ 8 s | PASS |
+| English 10k CSV anonymize (speed) | 1.95 s | ≤ 8 s | PASS |
+| Hebrew 10k CSV anonymize (balanced) | 1.71 s | ≤ 8 s | PASS |
+| Hebrew 10k CSV anonymize (speed) | 1.60 s | ≤ 8 s | PASS |
+| 10k CSV restore | 0.19–0.22 s | ≤ 2 s | PASS |
+| Clipboard round trip | 0.14–0.23 s | ≤ 1.5 s | PASS |
+
+Delta vs. pre-optimization: English anonymize 48.95 s → 1.96 s (~96% faster); Hebrew 20.00 s → 1.71 s (~91% faster).
+
+> Note: the Master Status & Release Gates doc cites a 95.74 s 10k CSV anonymize as "the primary watch item." That number predates the post-optimization run above and is likely from an even earlier measurement set. The 1.96 s / 1.71 s numbers are the current truth; the release gates document needs reconciling once the next benchmark run lands.
+
+---
+
+## 6. What Is Left To Be Done
+
+### 6.1 Immediate (before any buyer demo)
+
+| Item | Why | Phase |
+|---|---|---|
+| Push `feature/demo-rules-and-il-entities` and open a PR against `main` | Get full CI / security / performance gates green on this branch and a review surface | Phase 1 closeout |
+| Run `gh auth refresh -s workflow` and land the deferred CI filter cleanup (drop `codex/**`, leave `main` + `pull_request`) | The change is already prepared; the OAuth token didn't have `workflow` scope when we tried | Phase 0 leftover |
+| Re-run benchmark gate on the PR branch | Confirm the demo-rule and replacer changes haven't moved the perf baseline | Phase 0 / 1 closeout |
+| Phase 2 — audit / report safety hardening | Trust Center cannot honestly use live audit data until file paths are hashed and reports cannot leak filenames containing PII | Phase 2 |
+
+### 6.2 Demo build-out (per the execution plan)
+
+| Phase | Scope | Rough effort |
+|---|---|---|
+| 2 | Audit/report safety. Replace any remaining raw `file_path` writes with `{file_hash, file_label_safe}`. Add hash chain on sanitization reports. Tests with PII-bearing filenames. | 2–3 days |
+| 3 | Demo backend: FastAPI bound to `127.0.0.1` only. Endpoints: `POST /api/shield`, `POST /api/restore`, `GET /api/trust-center`, `POST /api/demo/load-sample`, `POST /api/demo/reset`. | 3–4 days |
+| 4 | Three-screen web UI with RTL support (Shield for AI, Restore, Trust Center). Sample switcher (EN / HE-IL / mixed). Presenter controls. | 5–7 days |
+| 5 | Mutated-token failure flow. Pre-canned response that breaks `[PERSON_00001]` → `[PERSON_001]`. Fail-closed UI exactly per PRD §9 Step 8. Integration test asserting structured error and no partial restore. | 1 day |
+| 6 | Demo packaging. `cloakroom demo` opens browser, README runbook. Optional signed `.app` if time permits. | 2–3 days |
+| 7 | Dress rehearsal + gates. Full PRD §5 narrative on a clean machine, success criteria check, performance NFRs, network capture proving no outbound traffic. | 1–2 days |
+
+Total remaining for a presentable buyer demo: **~3.5–4.5 focused engineering weeks** beyond what's already in.
+
+### 6.3 Out of scope for the killer demo (Master-PRD work)
+
+Tracked but not blocking the buyer demo:
+
+- Swift menu-bar packaging (signed `.app`, real heartbeat, `ClipboardGuard` wired into the production menu flow, real wake/health checks). Currently scaffold-grade.
+- Crash atomicity / staged-output reconciliation.
+- Real LLM mutation harness against representative corpora.
+- License/entitlement system upgrade (currently regex/env-var based).
+- Third-party model/license review (spaCy, Presidio, Hebrew models, Stanza, Transformers, PyMuPDF, Gradio, Textual, Swift deps).
+- Reconciliation of the 95.74 s vs. 1.96 s perf numbers between the master release-gates doc and the actual benchmark.
+
+---
+
+## 7. Open Issues / Risks
+
+| Risk | Why it matters | Mitigation |
+|---|---|---|
+| Phase 1 not yet under CI | A subtle regression could ship into `main` if we merge without GitHub workflows running | Push and open the PR before any Phase 2 work |
+| Audit code may still write raw `file_path` in some report writers (per gap catalog 2026-04-29) | A Trust Center built on top of leaky data would publicly contradict its own claims | Phase 2 must complete before any UI surfaces audit data |
+| Hebrew NER quality in this dev env | HE_PERSON detection on the bundled HE sample relies on `xx_ent_wiki_sm` fallback | Production install: `python -m spacy download he_core_news_sm`. Phase 1 explicitly does not assert HE_PERSON on the bundled sample. |
+| Demo-rule false positives in non-demo workspaces | Default ruleset includes `Acme Health`, `Project Lantern`, etc. — fine for the killer demo, wrong for a real customer | Default ruleset is opt-in via the `demo_ruleset=` constructor argument; pipeline default is `None`, so no production change. |
+| Stale local + remote branches confuse new clones | `codex/handoff-b-status-doc(-clean)` and `feature/rename-to-cloakroom` are no longer load-bearing | Optional cleanup task: delete both remotes and the local rename branch after the Phase 1 PR merges. |
+
+---
+
+## 8. How To Run This Locally
+
+From the canonical tree (`/Users/greggberretta/Documents/New project/Cloakroom`):
+
+```bash
+# 1. Install / refresh deps (uv-managed venv).
+uv sync --extra dev
+uv run python -m ensurepip
+uv run python -m spacy download en_core_web_lg
+uv run python -m spacy download he_core_news_sm   # or xx_ent_wiki_sm
+
+# 2. Full test suite.
+uv run pytest -q                           # expect 309 passed
+
+# 3. EC-15 state integrity gate.
+uv run pytest -q tests/test_state_integrity/test_ec15_state_integrity.py
+
+# 4. Killer-demo terminal walkthrough (English sample).
+uv run python scripts/demo_walkthrough.py
+
+# 5. Swift wrapper build + invariant harness.
+swift build --package-path wrapper/CloakroomWrapper
+swift run --package-path wrapper/CloakroomWrapper wrapper-invariant-checks
+```
+
+Branch / push / PR:
+
+```bash
+git checkout feature/demo-rules-and-il-entities
+git push -u origin feature/demo-rules-and-il-entities
+gh pr create --base main --fill
+```
+
+The CI filter cleanup commit needs `gh auth refresh -s workflow` first (the existing token has `repo` but not `workflow`).
+
+---
+
+## 9. Pointers For An Engineer Picking This Up Cold
+
+- **Read order:** [docs/Cloakroom_Master_PRD.md](docs/Cloakroom_Master_PRD.md) → [docs/Cloakroom_Killer_Demo_PRD.md](docs/Cloakroom_Killer_Demo_PRD.md) → [docs/Cloakroom_Current_State_and_Gaps.md](docs/Cloakroom_Current_State_and_Gaps.md) → this file → execution plan in `~/.claude/plans/`.
+- **Spine of the engine:** [src/cloakroom/pipeline/anonymize.py](src/cloakroom/pipeline/anonymize.py) and [src/cloakroom/pipeline/restore.py](src/cloakroom/pipeline/restore.py).
+- **Detection layering (highest precedence first):** demo rules → regex prefilter → Presidio NER. All converge in [src/cloakroom/detection/engine.py](src/cloakroom/detection/engine.py) `_merge_entities`.
+- **Token model:** [src/cloakroom/models.py](src/cloakroom/models.py) (`EntityType`, `Token`, `EntityMapping`); minted in [src/cloakroom/tokenizer/generator.py](src/cloakroom/tokenizer/generator.py); applied in [src/cloakroom/tokenizer/replacer.py](src/cloakroom/tokenizer/replacer.py).
+- **Vault and workspace lifecycle:** [src/cloakroom/vault/](src/cloakroom/vault/) and [src/cloakroom/workspace/manager.py](src/cloakroom/workspace/manager.py).
+- **Existing UI surfaces** (internal-only, not the killer demo): [src/cloakroom/ui/gradio_app.py](src/cloakroom/ui/gradio_app.py), [src/cloakroom/tui/app.py](src/cloakroom/tui/app.py).
+- **Killer-demo entry points to build next:** `src/cloakroom/demo_server/` (Phase 3, doesn't exist yet) and a fresh single-page UI (Phase 4).
