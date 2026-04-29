@@ -19,6 +19,8 @@ dependencies = [
     "rich>=13.0.0",
     "textual>=0.78.0",
     "gradio>=5.35.0",
+    "fastapi>=0.115.0",
+    "uvicorn>=0.30.0",
 ]
 
 [project.optional-dependencies]
@@ -41,6 +43,7 @@ cloakroom-tui = "cloakroom.tui.app:run"
 cloakroom-gradio = "cloakroom.ui.gradio_app:launch"
 cloakroom-ipc = "cloakroom.ipc.server:main"
 cloakroom-ipc-stdio = "cloakroom.ipc.stdio_server:main"
+cloakroom-demo-server = "cloakroom.demo_server.app:main"
 
 [build-system]
 requires = ["hatchling"]
