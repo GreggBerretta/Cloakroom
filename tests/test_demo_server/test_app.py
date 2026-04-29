@@ -61,6 +61,53 @@ def test_demo_server_shield_restore_and_trust_center(client):
     assert "[PERSON_00001]" not in restored_payload["restored_text"]
 
 
+def test_demo_server_serves_phase4_ui(client):
+    index = client.get("/")
+    assert index.status_code == 200
+    assert "text/html" in index.headers["content-type"]
+    assert 'id="cloakroom-app"' in index.text
+    assert "Shield for AI" in index.text
+    assert "Trust Center" in index.text
+
+    app_js = client.get("/static/app.js")
+    assert app_js.status_code == 200
+    assert "POST" in app_js.text
+    assert "/api/shield" in app_js.text
+
+    styles = client.get("/static/styles.css")
+    assert styles.status_code == 200
+    assert ".shield-grid" in styles.text
+
+
+def test_demo_server_mixed_sample_shields_english_and_il_values(client):
+    sample = client.post(
+        "/api/demo/load-sample",
+        json={"name": "customer_escalation_mixed.md"},
+    )
+    assert sample.status_code == 200
+    sample_payload = sample.json()
+    assert sample_payload["language"] == "auto"
+    assert "Sarah Morgan" in sample_payload["original_text"]
+    assert "312345674" in sample_payload["original_text"]
+
+    shield = client.post(
+        "/api/shield",
+        json={
+            "text": sample_payload["original_text"],
+            "sample_name": "customer_escalation_mixed.md",
+        },
+    )
+    assert shield.status_code == 200
+    payload = shield.json()
+    assert payload["ok"] is True
+    assert payload["leak_check"]["leaked_items"] == 0
+    assert "Sarah Morgan" not in payload["ai_safe_text"]
+    assert "312345674" not in payload["ai_safe_text"]
+    assert "[TEUDAT_ZEHUT_00001]" in payload["ai_safe_text"]
+    assert payload["review_items"]
+    assert "Sarah Morgan" not in str(payload["review_items"])
+
+
 def test_demo_server_restore_blocks_mutated_token(client):
     sample = client.post(
         "/api/demo/load-sample",

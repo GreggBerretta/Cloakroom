@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timedelta, timezone
+from importlib import resources
 from pathlib import Path
+import re
 import shutil
 import threading
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from cloakroom.demo import load_sample
@@ -31,9 +34,11 @@ DEMO_WORKSPACE_ID = "cloakroom-demo"
 DEMO_WORKSPACE_NAME = "Cloakroom Demo"
 LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
 LOCAL_TEST_CLIENTS = frozenset({"testclient"})
+TOKEN_RE = re.compile(r"\[[A-Z][A-Z0-9_]*_\d{5}\]")
 DEMO_SAMPLE_LANGUAGES = {
     "customer_escalation_en.md": "en",
     "customer_escalation_he.md": "he",
+    "customer_escalation_mixed.md": "auto",
 }
 ENGLISH_SAMPLE_MARKERS = [
     "Sarah Morgan",
@@ -47,6 +52,12 @@ ENGLISH_SAMPLE_MARKERS = [
     "15 Farringdon Street, London",
     "Q3 churn containment plan",
     "pre-acquisition integration risk",
+]
+HEBREW_SAMPLE_MARKERS = [
+    "moshe.levy@acmehealth.co.il",
+    "312345674",
+    "050-123-4567",
+    "12-345-6789012",
 ]
 
 
@@ -132,6 +143,7 @@ class DemoRuntime:
                 "mutated_ai_response": mutated,
                 "entities_found": result.entities_found,
                 "tokens_applied": result.tokens_applied,
+                "review_items": _review_items(self.ctx, safe_text),
                 "entity_counts": latest_report.get("entity_counts", {}),
                 "report": latest_report,
                 "leak_check": {
@@ -254,6 +266,8 @@ class DemoRuntime:
 def create_app(runtime: DemoRuntime | None = None) -> FastAPI:
     demo_runtime = runtime or DemoRuntime()
     app = FastAPI(title="Cloakroom Demo Server", version="0.1.0")
+    static_dir = resources.files(__package__).joinpath("static")
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
     @app.middleware("http")
     async def _local_only_guard(request: Request, call_next):
@@ -278,6 +292,11 @@ def create_app(runtime: DemoRuntime | None = None) -> FastAPI:
             "service": "cloakroom-demo-server",
             "local_only": True,
         }
+
+    @app.get("/", response_class=HTMLResponse, include_in_schema=False)
+    def demo_ui() -> HTMLResponse:
+        html = static_dir.joinpath("index.html").read_text(encoding="utf-8")
+        return HTMLResponse(html)
 
     @app.post("/api/demo/load-sample")
     def load_demo_sample(request: LoadSampleRequest) -> dict[str, Any]:
@@ -357,7 +376,86 @@ def _validate_sample_name(name: str) -> str:
 def _sample_markers(sample_name: str) -> list[str]:
     if sample_name == "customer_escalation_en.md":
         return list(ENGLISH_SAMPLE_MARKERS)
+    if sample_name == "customer_escalation_he.md":
+        return list(HEBREW_SAMPLE_MARKERS)
+    if sample_name == "customer_escalation_mixed.md":
+        return [*ENGLISH_SAMPLE_MARKERS, *HEBREW_SAMPLE_MARKERS]
     return []
+
+
+def _review_items(ctx: WorkspaceContext, current_text: str = "") -> list[dict[str, Any]]:
+    current_tokens = set(TOKEN_RE.findall(current_text)) if current_text else set()
+    items = []
+    for mapping in sorted(
+        ctx.vault_data.mappings.values(),
+        key=lambda item: (item.first_seen, item.token.token_text),
+    ):
+        token_text = mapping.token.token_text
+        if current_tokens and token_text not in current_tokens:
+            continue
+        items.append(
+            {
+                "risk_type": _risk_type_label(mapping.entity_type.value),
+                "group": _risk_group(mapping.entity_type.value),
+                "masked_value": _mask_value(mapping.original_value),
+                "token": token_text,
+                "location": _source_location(mapping.source_files),
+                "confidence": _confidence_label(mapping.entity_type.value),
+                "action": "Shielded",
+            }
+        )
+    return items
+
+
+def _risk_type_label(entity_type: str) -> str:
+    return entity_type.replace("_", " ").title()
+
+
+def _risk_group(entity_type: str) -> str:
+    if entity_type in {"PERSON", "EMAIL", "PHONE", "ADDRESS_LINE", "HE_PERSON"}:
+        return "Personal data"
+    if entity_type in {"TEUDAT_ZEHUT", "IL_PHONE", "IL_ADDRESS", "IL_BANK_ACCOUNT"}:
+        return "PII / regulated identifiers"
+    if entity_type in {"ORG", "CUSTOMER_ID"}:
+        return "Customer confidential"
+    if entity_type in {"PROJECT", "STRATEGY"}:
+        return "Strategic information"
+    if entity_type in {"CONTRACT_VALUE", "PRICING_TERM"}:
+        return "Financial and contract data"
+    return "Custom rules"
+
+
+def _confidence_label(entity_type: str) -> str:
+    if entity_type in {
+        "PROJECT",
+        "STRATEGY",
+        "CONTRACT_VALUE",
+        "PRICING_TERM",
+        "CUSTOMER_ID",
+        "ADDRESS_LINE",
+    }:
+        return "Rule match"
+    return "High"
+
+
+def _source_location(source_files: list[str]) -> str:
+    if not source_files:
+        return "Current input"
+    return Path(source_files[0]).suffix.lstrip(".").upper() or "Current input"
+
+
+def _mask_value(value: str) -> str:
+    cleaned = " ".join((value or "").split())
+    if not cleaned:
+        return "***"
+    if "@" in cleaned:
+        local, _, domain = cleaned.partition("@")
+        return f"{local[:4]}...@...{domain[-3:]}"
+    if len(cleaned) <= 4:
+        return "***"
+    if len(cleaned) <= 10:
+        return f"{cleaned[:2]}...{cleaned[-2:]}"
+    return f"{cleaned[:6]}...{cleaned[-4:]}"
 
 
 def _latest_report(ctx: WorkspaceContext) -> dict[str, Any]:

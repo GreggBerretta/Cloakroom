@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Cloakroom Demo</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <script src="/static/app.js" defer></script>
+  </head>
+  <body>
+    <svg aria-hidden="true" class="svg-sprite">
+      <symbol id="icon-shield" viewBox="0 0 24 24">
+        <path d="M12 2.6 19 5v6.1c0 4.4-2.8 8.4-7 10.2-4.2-1.8-7-5.8-7-10.2V5l7-2.4Z"></path>
+        <path d="m8.4 12 2.2 2.2 5.1-5.4"></path>
+      </symbol>
+      <symbol id="icon-lock" viewBox="0 0 24 24">
+        <path d="M7 10V7a5 5 0 0 1 10 0v3"></path>
+        <path d="M6 10h12v10H6z"></path>
+        <path d="M12 14v3"></path>
+      </symbol>
+      <symbol id="icon-restore" viewBox="0 0 24 24">
+        <path d="M7 7h7a6 6 0 1 1-5.3 8.8"></path>
+        <path d="M7 7v5H2"></path>
+      </symbol>
+      <symbol id="icon-copy" viewBox="0 0 24 24">
+        <path d="M8 8h10v12H8z"></path>
+        <path d="M6 16H4V4h10v2"></path>
+      </symbol>
+      <symbol id="icon-sample" viewBox="0 0 24 24">
+        <path d="M6 3h9l3 3v15H6z"></path>
+        <path d="M14 3v4h4"></path>
+        <path d="M9 12h6"></path>
+        <path d="M9 16h6"></path>
+      </symbol>
+      <symbol id="icon-reset" viewBox="0 0 24 24">
+        <path d="M20 12a8 8 0 1 1-2.3-5.7"></path>
+        <path d="M20 4v6h-6"></path>
+      </symbol>
+      <symbol id="icon-alert" viewBox="0 0 24 24">
+        <path d="M12 3 22 20H2L12 3Z"></path>
+        <path d="M12 9v5"></path>
+        <path d="M12 17h.01"></path>
+      </symbol>
+      <symbol id="icon-report" viewBox="0 0 24 24">
+        <path d="M5 4h14v16H5z"></path>
+        <path d="M8 8h8"></path>
+        <path d="M8 12h8"></path>
+        <path d="M8 16h5"></path>
+      </symbol>
+    </svg>
+
+    <div id="cloakroom-app" class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark"><svg><use href="#icon-shield"></use></svg></span>
+          <span>
+            <strong>Cloakroom</strong>
+            <small>Demo Workspace</small>
+          </span>
+        </div>
+
+        <label class="workspace-select">
+          <span>Workspace</span>
+          <select id="workspace-select" aria-label="Workspace">
+            <option>Demo Workspace</option>
+          </select>
+        </label>
+
+        <div class="status-strip" aria-live="polite">
+          <span id="vault-status" class="status-pill good">Local vault active</span>
+          <span id="network-status" class="status-pill good">No original data sent</span>
+          <span id="ttl-status" class="status-pill">Expires in 24h</span>
+        </div>
+      </header>
+
+      <nav class="nav-tabs" aria-label="Demo screens">
+        <button class="tab-button is-active" data-screen-target="shield" type="button">
+          <svg><use href="#icon-shield"></use></svg>
+          Shield for AI
+        </button>
+        <button class="tab-button" data-screen-target="restore" type="button">
+          <svg><use href="#icon-restore"></use></svg>
+          Restore
+        </button>
+        <button class="tab-button" data-screen-target="trust" type="button">
+          <svg><use href="#icon-lock"></use></svg>
+          Trust Center
+        </button>
+      </nav>
+
+      <section class="presenter-bar" aria-label="Presenter controls">
+        <label class="sample-picker">
+          <span>Demo sample</span>
+          <select id="sample-select">
+            <option value="customer_escalation_en.md">Customer Escalation - EN</option>
+            <option value="customer_escalation_he.md">Customer Escalation - HE-IL</option>
+            <option value="customer_escalation_mixed.md">Customer Escalation - Mixed</option>
+          </select>
+        </label>
+        <button id="load-sample-button" class="button secondary" type="button">
+          <svg><use href="#icon-sample"></use></svg>
+          Use Demo Sample
+        </button>
+        <button id="load-failure-button" class="button secondary" type="button" disabled>
+          <svg><use href="#icon-alert"></use></svg>
+          Load Failure Sample
+        </button>
+        <button id="export-report-button" class="button ghost" type="button" disabled>
+          <svg><use href="#icon-report"></use></svg>
+          Export Audit JSON
+        </button>
+        <button id="reset-button" class="button ghost" type="button">
+          <svg><use href="#icon-reset"></use></svg>
+          Reset Demo
+        </button>
+      </section>
+
+      <main class="screen-stage">
+        <section id="screen-shield" class="screen is-active" data-screen="shield">
+          <div class="shield-grid">
+            <article class="panel source-panel">
+              <div class="panel-header">
+                <div>
+                  <h1>Original - stays local</h1>
+                  <p id="source-subtitle">Drop a file or paste text to prepare it for AI.</p>
+                </div>
+                <span id="source-language" class="mini-badge">EN</span>
+              </div>
+              <textarea id="source-input" class="text-field source-field" spellcheck="false" dir="auto" wrap="soft"></textarea>
+              <input id="file-input" type="file" accept=".txt,.md,text/plain,text/markdown" hidden>
+              <div class="panel-actions">
+                <button id="paste-button" class="button secondary" type="button">
+                  <svg><use href="#icon-copy"></use></svg>
+                  Paste Text
+                </button>
+                <button id="file-button" class="button secondary" type="button">
+                  <svg><use href="#icon-sample"></use></svg>
+                  Drop File
+                </button>
+                <button id="shield-button" class="button primary" type="button">
+                  <svg><use href="#icon-shield"></use></svg>
+                  Create AI-Safe Version
+                </button>
+                <button id="clear-source-button" class="button ghost" type="button">Clear</button>
+              </div>
+            </article>
+
+            <aside class="pipeline-rail" aria-live="polite">
+              <div class="rail-header">
+                <strong id="pipeline-title">Ready</strong>
+                <span id="pipeline-status">Local workflow</span>
+              </div>
+              <ol class="pipeline-list">
+                <li data-step="read" class="is-done"><span></span>Reading content locally</li>
+                <li data-step="detect"><span></span>Finding personal and confidential data</li>
+                <li data-step="replace"><span></span>Replacing values with tokens</li>
+                <li data-step="vault"><span></span>Saving restore map to encrypted local vault</li>
+                <li data-step="check"><span></span>Checking AI-safe output</li>
+              </ol>
+              <div class="metric-stack">
+                <div>
+                  <strong id="metric-replaced">0</strong>
+                  <span>sensitive items replaced</span>
+                </div>
+                <div>
+                  <strong id="metric-leaks">0</strong>
+                  <span>original values in AI-safe output</span>
+                </div>
+                <div>
+                  <strong id="metric-mappings">0</strong>
+                  <span>mappings stored locally</span>
+                </div>
+              </div>
+            </aside>
+
+            <article class="panel output-panel">
+              <div class="panel-header">
+                <div>
+                  <h2 id="safe-output-title">AI-safe version</h2>
+                  <p id="safe-output-subtitle">Tokens preserve context without exposing the originals.</p>
+                </div>
+                <span id="safe-status" class="mini-badge neutral">Not created</span>
+              </div>
+              <pre id="safe-output" class="output-box empty" dir="auto">AI-safe text will appear here.</pre>
+              <div class="panel-actions">
+                <button id="copy-safe-button" class="button secondary" type="button" disabled>
+                  <svg><use href="#icon-copy"></use></svg>
+                  Copy AI-Safe Text
+                </button>
+                <button id="go-restore-button" class="button ghost" type="button" disabled>Restore AI Response</button>
+              </div>
+            </article>
+          </div>
+
+          <div class="proof-grid">
+            <section class="proof-panel">
+              <h2>What the AI sees</h2>
+              <p>Tokenized text only. Raw names, contact details, customer identifiers, pricing, and strategy phrases are removed before the AI step.</p>
+              <div id="ai-sees-list" class="proof-list">
+                <span>[PERSON_00001]</span>
+                <span>[PROJECT_00001]</span>
+                <span>[CONTRACT_VALUE_00001]</span>
+              </div>
+            </section>
+            <section class="proof-panel">
+              <h2>What stays local</h2>
+              <ul>
+                <li>Original sensitive values</li>
+                <li>Token restore map</li>
+                <li>Vault key material</li>
+                <li>Audit-safe metadata only</li>
+              </ul>
+            </section>
+            <section class="proof-panel">
+              <h2>Detection review</h2>
+              <div class="table-wrap">
+                <table class="review-table">
+                  <thead>
+                    <tr>
+                      <th>Risk type</th>
+                      <th>Found value</th>
+                      <th>Token</th>
+                      <th>Confidence</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody id="review-table-body">
+                    <tr><td colspan="5">Create an AI-safe version to review detected items.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section id="screen-restore" class="screen" data-screen="restore" hidden>
+          <div class="restore-grid">
+            <article class="panel">
+              <div class="panel-header">
+                <div>
+                  <h1>AI response simulation</h1>
+                  <p>Paste the AI response here, then restore original values locally.</p>
+                </div>
+                <span id="restore-mode-badge" class="mini-badge neutral">Clean</span>
+              </div>
+              <div class="panel-actions top-actions">
+                <button id="use-clean-response-button" class="button secondary" type="button" disabled>Use Clean AI Response</button>
+                <button id="use-mutated-response-button" class="button secondary" type="button" disabled>
+                  <svg><use href="#icon-alert"></use></svg>
+                  Use Mutated Response
+                </button>
+              </div>
+              <textarea id="restore-input" class="text-field restore-field" spellcheck="false" dir="auto" wrap="soft"></textarea>
+              <div class="verify-strip" aria-live="polite">
+                <div><strong id="known-tokens-found">0</strong><span>known tokens found</span></div>
+                <div><strong id="verified-tokens">0</strong><span>verified</span></div>
+                <div><strong id="changed-tokens">0</strong><span>changed or invented</span></div>
+              </div>
+              <div class="panel-actions">
+                <button id="restore-button" class="button primary" type="button" disabled>
+                  <svg><use href="#icon-restore"></use></svg>
+                  Restore Original Values
+                </button>
+              </div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2 id="restore-output-title">Restored output</h2>
+                  <p id="restore-output-subtitle">No data is sent online during restore.</p>
+                </div>
+                <span id="restore-status" class="mini-badge neutral">Waiting</span>
+              </div>
+              <pre id="restore-output" class="output-box empty" dir="auto">Restored text will appear here.</pre>
+              <div id="restore-error" class="restore-error" hidden></div>
+            </article>
+          </div>
+        </section>
+
+        <section id="screen-trust" class="screen" data-screen="trust" hidden>
+          <div class="trust-grid">
+            <section class="trust-panel">
+              <h1>Workspace status</h1>
+              <dl class="status-dl">
+                <div><dt>Workspace</dt><dd id="trust-workspace">Demo Workspace</dd></div>
+                <div><dt>Vault</dt><dd id="trust-vault">Encrypted local vault</dd></div>
+                <div><dt>TTL</dt><dd id="trust-ttl">24 hours</dd></div>
+                <div><dt>Mappings</dt><dd id="trust-mappings">0</dd></div>
+                <div><dt>Shield events</dt><dd id="trust-shields">0</dd></div>
+                <div><dt>Restore events</dt><dd id="trust-restores">0</dd></div>
+              </dl>
+            </section>
+
+            <section class="trust-panel">
+              <h2>Local-only proof</h2>
+              <ul id="local-proof-list" class="proof-checklist">
+                <li>Original values stored locally</li>
+                <li>Vault encrypted</li>
+                <li>No external AI calls</li>
+                <li>No raw filenames in reports</li>
+              </ul>
+            </section>
+
+            <section class="trust-panel wide">
+              <h2>Audit-safe report</h2>
+              <div class="table-wrap">
+                <table class="audit-table">
+                  <thead>
+                    <tr>
+                      <th>Timestamp</th>
+                      <th>Action</th>
+                      <th>File label</th>
+                      <th>Counts</th>
+                      <th>Integrity</th>
+                    </tr>
+                  </thead>
+                  <tbody id="audit-table-body">
+                    <tr><td colspan="5">No audit-safe reports yet.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="trust-panel">
+              <h2>Policy preview</h2>
+              <ul id="policy-list" class="policy-list"></ul>
+            </section>
+
+            <section class="trust-panel">
+              <h2>Custom demo rules</h2>
+              <div class="rule-list">
+                <div><strong>Project codenames</strong><span>[PROJECT_00001]</span></div>
+                <div><strong>Pricing terms</strong><span>[PRICING_TERM_00001]</span></div>
+                <div><strong>Contract values</strong><span>[CONTRACT_VALUE_00001]</span></div>
+                <div><strong>Strategy phrases</strong><span>[STRATEGY_00001]</span></div>
+              </div>
+            </section>
+          </div>
+        </section>
+      </main>
+
+      <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+    </div>
+  </body>
+</html>
