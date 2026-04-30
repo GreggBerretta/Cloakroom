@@ -10,6 +10,7 @@ import re
 import shutil
 import threading
 from typing import Any
+import webbrowser
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -354,16 +355,40 @@ def validate_bind_host(host: str) -> str:
     return normalized
 
 
+def demo_url(host: str, port: int) -> str:
+    normalized = validate_bind_host(host)
+    display_host = "[::1]" if normalized == "::1" else normalized
+    return f"http://{display_host}:{port}/"
+
+
+def run_demo_server(
+    *,
+    host: str = "127.0.0.1",
+    port: int = 8765,
+    open_browser: bool = False,
+) -> None:
+    normalized_host = validate_bind_host(host)
+    url = demo_url(normalized_host, port)
+    if open_browser:
+        opener = threading.Timer(0.9, lambda: webbrowser.open(url))
+        opener.daemon = True
+        opener.start()
+    import uvicorn
+
+    uvicorn.run(create_app(), host=normalized_host, port=port)
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Run the local Cloakroom demo backend.")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument(
+        "--open-browser",
+        action="store_true",
+        help="Open the demo UI in the default browser after the local server starts.",
+    )
     args = parser.parse_args(argv)
-    host = validate_bind_host(args.host)
-
-    import uvicorn
-
-    uvicorn.run(create_app(), host=host, port=args.port)
+    run_demo_server(host=args.host, port=args.port, open_browser=args.open_browser)
 
 
 def _validate_sample_name(name: str) -> str:

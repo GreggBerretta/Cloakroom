@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from cloakroom.demo_server.app import DemoRuntime, create_app, validate_bind_host
+from cloakroom.demo_server.app import DemoRuntime, create_app, demo_url, validate_bind_host
 
 
 @pytest.fixture
@@ -168,3 +168,10 @@ def test_demo_server_validates_loopback_bind_host():
     assert validate_bind_host("localhost") == "localhost"
     with pytest.raises(ValueError):
         validate_bind_host("0.0.0.0")
+
+
+def test_demo_url_formats_loopback_hosts():
+    assert demo_url("127.0.0.1", 8765) == "http://127.0.0.1:8765/"
+    assert demo_url("::1", 8765) == "http://[::1]:8765/"
+    with pytest.raises(ValueError):
+        demo_url("0.0.0.0", 8765)

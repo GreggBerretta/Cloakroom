@@ -1,6 +1,6 @@
 # Cloakroom — Build Status
 
-**Date:** 2026-04-29
+**Date:** 2026-04-30
 **Canonical working tree:** `/Users/greggberretta/Documents/New project/Cloakroom`
 **Origin:** `https://github.com/GreggBerretta/Cloakroom` (public)
 **Engine version:** `0.2.0` (pyproject + `__init__.py` + CLI aligned)
@@ -20,7 +20,7 @@ This document is the operational state of the Cloakroom codebase. The Master PRD
 | Stale local branches | `codex/handoff-b-status-doc`, `feature/rename-to-cloakroom` (kept as historical refs; deletable) |
 | Stale remote branches | `codex/handoff-b-status-doc`, `codex/handoff-b-status-doc-clean` (consider deleting after Phase 1 PR merges) |
 | Working tree | Clean after latest status commit |
-| Engine tests | **321 passing** on the active branch after Phase 4 local validation |
+| Engine tests | **324 passing** on the active branch after Phase 5/6 local validation |
 | Swift build | Pass on 2026-04-29 during Phase 1 closeout |
 
 ### Functional commits ahead of main on the active branch
@@ -30,13 +30,13 @@ This document is the operational state of the Cloakroom codebase. The Master PRD
 08d55f6  feat(detection): demo rules engine + first-class IL/HE entity taxonomy
 ```
 
-These functional commits, the NER template-cache performance fix, Phase 2 audit/report safety hardening, Phase 3 demo backend work, Phase 4 demo UI work, and status-documentation commits are on draft PR [#1](https://github.com/GreggBerretta/Cloakroom/pull/1).
+These functional commits, the NER template-cache performance fix, Phase 2 audit/report safety hardening, Phase 3 demo backend work, Phase 4 demo UI work, Phase 5 browser acceptance gate, Phase 6 launcher/runbook work, and status-documentation commits are on draft PR [#1](https://github.com/GreggBerretta/Cloakroom/pull/1).
 
 ---
 
 ## 2. What Has Been Built
 
-Phases reference the execution plan. Phases 0, 1, 2, 3, and 4 are complete locally; Phase 5 onward is not started.
+Phases reference the execution plan. Phases 0, 1, 2, 3, 4, 5, and 6 are complete locally; Phase 7 is not started.
 
 ### Phase 0 — Source-of-truth lock (DONE)
 
@@ -183,6 +183,51 @@ Current Phase 4 implementation is on the active branch after the Phase 3 commits
 - Added mixed-sample test proving English and IL deterministic values are shielded, `TEUDAT_ZEHUT` is emitted, and review rows do not expose raw values.
 - Browser verification used installed Chrome headless/CDP fallback because the Browser/IAB tool was not exposed and macOS Computer Use permissions were pending.
 
+### Phase 5 — Browser acceptance gate + fail-closed proof (DONE locally)
+
+Current Phase 5 implementation is on the active branch after the Phase 4 commits.
+
+**Acceptance script** ([scripts/demo_browser_acceptance.mjs](scripts/demo_browser_acceptance.mjs))
+- Starts `uv run cloakroom-demo-server` on a random loopback port.
+- Finds installed Chrome/Chromium (or `CLOAKROOM_BROWSER_BIN`) and drives the real UI through Chrome DevTools Protocol.
+- Exercises the actual buyer flow: Shield -> Restore blocked -> Trust Center -> mobile layout.
+- Asserts the PRD §9 failure proof: mutated `[PERSON_00001]` -> `[PERSON_001]`, `Restore blocked`, expected/found token copy, and no partial restored output.
+- Asserts AI-safe output contains 12 replacements, 0 raw demo leaks, masked review rows, and no desktop/mobile horizontal overflow.
+- Writes screenshots for review: `shield.png`, `restore-blocked.png`, `trust-center.png`, and `mobile.png`.
+
+**Hosted gate** ([.github/workflows/demo-acceptance.yml](.github/workflows/demo-acceptance.yml))
+- New GitHub Actions workflow: `Demo Acceptance`.
+- Runs on `pull_request` and `workflow_dispatch`.
+- Installs Python/uv dependencies, Node 22, and the English spaCy model, then runs the browser acceptance script.
+- Uploads screenshots as `demo-acceptance-artifacts`.
+
+**Local result**
+- `node scripts/demo_browser_acceptance.mjs --screenshot-dir /tmp/cloakroom_phase5_acceptance` -> pass.
+- Observed local result: 12 replacements, 0 leaks, 1 changed/invented token blocked, 0 partial output, Trust Center local-only proof, and mobile `scrollWidth == clientWidth == 390`.
+
+### Phase 6 — Demo launcher and runbook (DONE locally)
+
+Current Phase 6 implementation is on the active branch after the Phase 5 commits.
+
+**One-command launcher**
+- New CLI command: `uv run cloakroom demo`.
+- Opens the polished local demo UI in the default browser by default.
+- Binds only to loopback hosts via the same `validate_bind_host()` guard as the backend.
+- Supports `--host`, `--port`, and `--no-open-browser` for scripted or presenter-controlled runs.
+- Demo command is exempted from first-run workspace onboarding warnings because it uses its own self-contained demo vault.
+
+**Server launcher reuse** ([src/cloakroom/demo_server/app.py](src/cloakroom/demo_server/app.py))
+- Added `demo_url()` and `run_demo_server()` helpers.
+- `cloakroom-demo-server` now also supports `--open-browser`.
+
+**Runbook** ([docs/Cloakroom_Demo_Runbook.md](docs/Cloakroom_Demo_Runbook.md))
+- New reviewer/presenter runbook with quick start, demo flow, presenter controls, acceptance gate command, and local-only notes.
+
+**Coverage**
+- CLI tests cover `cloakroom demo --help` and non-loopback host rejection without onboarding noise.
+- Demo-server tests cover `demo_url()` formatting and non-loopback rejection.
+- Local smoke test started `uv run cloakroom demo --host 127.0.0.1 --port <random> --no-open-browser`, confirmed `/api/health`, then stopped the process.
+
 ### Already-built capabilities preserved from the prior 2026-02-24 status
 
 These were validated before Phase 0/1 work and remain green; Phase 1 did not touch them:
@@ -210,11 +255,13 @@ These were validated before Phase 0/1 work and remain green; Phase 1 did not tou
 
 | Suite | Pre-Phase-1 | Now |
 |---|---|---|
-| Total Python tests | 297 | **321** |
+| Total Python tests | 297 | **324** |
 | Phase-1 additions | — | 13 (7 demo-rule unit, 5 demo end-to-end, 1 NER template-cache regression) |
 | Phase-2 additions | — | 4 new tests plus 1 strengthened report export test (report path safety, report hash chain, audit path safety, pipeline no-leak integration) |
 | Phase-3 additions | — | 5 demo-server HTTP tests |
 | Phase-4 additions | — | 2 demo-server UI/sample tests |
+| Phase-5 additions | — | Browser acceptance gate script + GitHub workflow |
+| Phase-6 additions | — | 3 Python tests for demo launcher/URL guardrails |
 
 Run command: `uv run pytest -q` (canonical tree).
 
@@ -264,7 +311,20 @@ Run command: `uv run pytest -q` (canonical tree).
 - `test_demo_server_serves_phase4_ui`
 - `test_demo_server_mixed_sample_shields_english_and_il_values`
 
-### 3.6 Walkthrough output (current state)
+### 3.6 New tests and gates added in Phase 5/6
+
+[scripts/demo_browser_acceptance.mjs](scripts/demo_browser_acceptance.mjs):
+- Browser gate starts the local server, drives Chrome through Shield, Restore-blocked, Trust Center, and mobile layout.
+- Local run passed with 12 replacements, 0 leaks, 1 changed/invented token blocked, 0 partial output, and mobile no-overflow.
+
+[tests/test_demo_server/test_app.py](tests/test_demo_server/test_app.py):
+- `test_demo_url_formats_loopback_hosts`
+
+[tests/test_cli.py](tests/test_cli.py):
+- `test_demo_help`
+- `test_demo_rejects_non_loopback_without_onboarding_warning`
+
+### 3.7 Walkthrough output (current state)
 
 `uv run python scripts/demo_walkthrough.py` produces:
 
@@ -277,7 +337,7 @@ The team wants AI help summarizing the [STRATEGY_00001] and [STRATEGY_00002] bef
 
 11 sensitive items shielded, 0 leaked, byte-identical round trip.
 
-### 3.7 Browser/UI verification (Phase 4 local)
+### 3.8 Browser/UI verification (Phase 4/5 local)
 
 Browser verification used installed Chrome headless/CDP fallback because Browser/IAB was not available in this session and Computer Use permissions were pending.
 
@@ -286,24 +346,28 @@ Browser verification used installed Chrome headless/CDP fallback because Browser
 - Restore failure path: loaded the mutated response, clicked restore, confirmed `Blocked`, 1 changed/invented token, expected `[PERSON_00001]`, found `[PERSON_001]`, and empty restored output.
 - Trust Center path: confirmed mappings, shield events, audit-safe rows, local bind host `127.0.0.1`, external AI calls `0`, encrypted vault, and reports excluding original values.
 - Screenshot artifacts from this local QA pass were written to `/tmp/cloakroom_phase4_desktop_after_shield.png`, `/tmp/cloakroom_phase4_mobile_checked.png`, `/tmp/cloakroom_phase4_restore_blocked.png`, and `/tmp/cloakroom_phase4_trust_center.png`.
+- Phase 5 acceptance screenshots were written to `/tmp/cloakroom_phase5_acceptance/`.
 
-### 3.8 GitHub-hosted closeout validation
+### 3.9 GitHub-hosted closeout validation
 
 - **GitHub CI** — draft PR [#1](https://github.com/GreggBerretta/Cloakroom/pull/1) is open. Hosted `ci.yml`, `security-scan.yml`, and `ec15-gate.yml` passed on 2026-04-29 after the Phase 1 branch was pushed.
 - **GitHub performance gate** — manually dispatched `performance-gate.yml` passed on hosted macOS after the NER template-cache fix. Observed hosted run: anonymize 5.82s, restore 0.53s, clipboard 0.49s against the 8.00s / 2.00s / 1.50s gates.
 - **Phase 2 hosted checks** — passed on 2026-04-29 after the audit/report safety commit was pushed: CI tests, Security Scan dependency audit, EC-15, and manual `performance-gate.yml`.
 - **Phase 3 hosted checks** — passed on 2026-04-29 after the demo backend commit was pushed: CI tests, Security Scan dependency audit, EC-15, and manual `performance-gate.yml`.
 - **Phase 4 hosted checks** — passed on 2026-04-29 after the demo UI commit was pushed: CI tests, Security Scan dependency audit, EC-15, and manual `performance-gate.yml`.
-- **Local closeout validation** — completed on 2026-04-29:
-  - `uv run pytest -q` -> 321 passed, 1 warning
+- **Local closeout validation** — latest completed on 2026-04-30:
+  - `uv run pytest -q` -> 324 passed, 1 warning
   - `swift build --package-path wrapper/CloakroomWrapper` -> pass
   - `swift run --package-path wrapper/CloakroomWrapper wrapper-invariant-checks` -> pass
   - `uv run python scripts/demo_walkthrough.py` -> pass
   - `uv run --with pip-audit pip-audit --local` -> no known vulnerabilities found
-  - `uv run cloakroom benchmark-performance --rows 10000 --language en --enforce-gates --output /tmp/cloakroom_phase1_performance_gate_after_cache.json` -> Gate PASS
-  - `uv run pytest -q tests/test_demo_server/test_app.py` -> 7 passed, 1 warning
-  - `uv run ruff check src/cloakroom/demo_server tests/test_demo_server` -> pass
+  - `uv run cloakroom benchmark-performance --rows 10000 --language en --enforce-gates --output /tmp/cloakroom_phase6_performance_gate.json` -> Gate PASS (anonymize 1.67s, restore 0.21s, clipboard 0.22s)
+  - `uv run pytest -q tests/test_demo_server/test_app.py tests/test_cli.py` -> 30 passed, 1 warning
+  - `uv run ruff check src/cloakroom/demo_server src/cloakroom/cli.py tests/test_demo_server tests/test_cli.py` -> pass
   - `node --check src/cloakroom/demo_server/static/app.js` -> pass
+  - `node --check scripts/demo_browser_acceptance.mjs` -> pass
+  - `node scripts/demo_browser_acceptance.mjs --screenshot-dir /tmp/cloakroom_phase5_acceptance` -> pass
+  - `uv run cloakroom demo --host 127.0.0.1 --port <random> --no-open-browser` + `/api/health` -> pass
 
 ---
 
@@ -313,7 +377,7 @@ Browser verification used installed Chrome headless/CDP fallback because Browser
 
 | Gate | State |
 |---|---|
-| Engine correctness (321 tests) | Pass |
+| Engine correctness (324 tests) | Pass |
 | Demo-rule unit tests (7) | Pass |
 | End-to-end killer-demo flow on EN sample | Pass |
 | Strict PRD §6 token-layout assertion | Pass |
@@ -323,7 +387,7 @@ Browser verification used installed Chrome headless/CDP fallback because Browser
 | Swift wrapper build | Pass |
 | Wrapper invariant harness | Pass |
 | Dependency audit (`pip-audit --local`) | Pass; no known vulnerabilities found |
-| Local performance gate (EN, 10k rows) | Pass: anonymize 1.64s, restore 0.22s, clipboard 0.23s |
+| Local performance gate (EN, 10k rows) | Pass: anonymize 1.67s, restore 0.21s, clipboard 0.22s |
 | Phase 2 audit/report safety focused tests | Pass: governance/reporting, logging/observability, pipeline no-leak integration, EC-15 |
 | Phase 2 hosted PR checks | Pass: CI tests, Security Scan dependency audit, EC-15 |
 | Phase 2 hosted performance gate | Pass: anonymize 5.56s, restore 0.52s, clipboard 0.44s |
@@ -334,6 +398,8 @@ Browser verification used installed Chrome headless/CDP fallback because Browser
 | Phase 4 browser smoke | Pass: Chrome headless/CDP desktop Shield, mobile layout, Restore block, Trust Center |
 | Phase 4 hosted PR checks | Pass: CI tests, Security Scan dependency audit, EC-15 |
 | Phase 4 hosted performance gate | Pass: anonymize 7.49s, restore 0.70s, clipboard 0.62s |
+| Phase 5 browser acceptance gate | Pass locally: `scripts/demo_browser_acceptance.mjs` |
+| Phase 6 demo launcher smoke | Pass locally: `uv run cloakroom demo --no-open-browser` health check |
 
 ### 4.2 Failing
 
@@ -343,7 +409,7 @@ None at this moment.
 
 - **US area-code-with-parens phones** (`(415) 555-1234`) capture only `555-1234`. Not in the killer-demo sample; acceptable for now.
 - **Hebrew NER quality is limited in this dev env.** Only `xx_ent_wiki_sm` (multilingual fallback) is installed; `he_core_news_sm` is missing. So HE_PERSON detection on the bundled HE sample is best-effort. The deterministic IL_PHONE / TEUDAT_ZEHUT / IL_BANK_ACCOUNT paths work regardless. Production install must `python -m spacy download he_core_news_sm`. Phase 1 tests deliberately do not assert HE_PERSON on the bundled sample for this reason.
-- **Multi-pass LLM mutation acceptance gate** is still synthetic, not against real LLM outputs (per gap catalog). The killer-demo Phase 5 covers one canned mutated-token sample; broader real-LLM corpus gate stays Master-PRD scope.
+- **Multi-pass LLM mutation acceptance gate** is still synthetic, not against real LLM outputs (per gap catalog). Phase 5 now gates the canned mutated-token sample in a real browser; broader real-LLM corpus coverage stays Master-PRD scope.
 
 ---
 
@@ -444,7 +510,7 @@ Delta vs. pre-optimization: English anonymize 48.95 s → 1.96 s (~96% faster); 
 
 | Item | Why | Phase |
 |---|---|---|
-| Human-review and merge draft PR [#1](https://github.com/GreggBerretta/Cloakroom/pull/1) when ready | Branch is pushed, PR is open, and local + hosted closeout gates have passed through Phase 4 | Phase 1/2/3/4 closeout |
+| Human-review and merge draft PR [#1](https://github.com/GreggBerretta/Cloakroom/pull/1) when ready | Branch is pushed, PR is open, and local closeout gates have passed through Phase 6. Hosted checks need to complete after the Phase 5/6 push. | Phase 1/2/3/4/5/6 closeout |
 | Run `gh auth refresh -s workflow` and land the deferred CI filter cleanup (drop `codex/**`, leave `main` + `pull_request`) | The change is already prepared; the OAuth token didn't have `workflow` scope when we tried | Phase 0 leftover |
 
 ### 6.2 Demo build-out (per the execution plan)
@@ -454,11 +520,11 @@ Delta vs. pre-optimization: English anonymize 48.95 s → 1.96 s (~96% faster); 
 | 2 | Audit/report safety. Replace raw `file_path` report/audit surfaces with `{file_hash, file_label_safe}`. Add hash chain on sanitization reports. Tests with PII-bearing filenames. | DONE locally |
 | 3 | Demo backend: FastAPI bound to `127.0.0.1` only. Endpoints: `POST /api/shield`, `POST /api/restore`, `GET /api/trust-center`, `POST /api/demo/load-sample`, `POST /api/demo/reset`. | DONE locally |
 | 4 | Three-screen web UI with RTL support (Shield for AI, Restore, Trust Center). Sample switcher (EN / HE-IL / mixed). Presenter controls. | DONE locally |
-| 5 | Mutated-token failure hardening. The Phase 4 UI already demonstrates the failure path; remaining work is a formal browser/integration gate asserting exact PRD §9 copy/state and no partial restore across CI. | 0.5–1 day |
-| 6 | Demo packaging. `cloakroom demo` opens browser, README runbook. Optional signed `.app` if time permits. | 2–3 days |
+| 5 | Mutated-token failure hardening. Formal browser/integration gate asserting exact PRD §9 copy/state and no partial restore across CI. | DONE locally |
+| 6 | Demo packaging. `cloakroom demo` opens browser, README runbook. Optional signed `.app` if time permits. | DONE locally for web demo; signed `.app` not included |
 | 7 | Dress rehearsal + gates. Full PRD §5 narrative on a clean machine, success criteria check, performance NFRs, network capture proving no outbound traffic. | 1–2 days |
 
-Total remaining for a presentable buyer demo after Phase 4: **~1–2 focused engineering weeks** beyond what's already in, mostly packaging, CI/browser gate hardening, clean-machine rehearsal, and proof capture.
+Total remaining for a presentable buyer demo after Phase 6: **~2–4 focused engineering days** beyond what's already in, mostly clean-machine rehearsal, proof capture, and final PR review/merge.
 
 ### 6.3 Out of scope for the killer demo (Master-PRD work)
 
@@ -479,8 +545,8 @@ Tracked but not blocking the buyer demo:
 |---|---|---|
 | Follow-up pushes can stale PR checks | A final documentation or review fix can require checks to be re-run before merge | Re-check PR [#1](https://github.com/GreggBerretta/Cloakroom/pull/1) immediately before merging |
 | Follow-up raw path additions | New report/audit call sites could reintroduce raw paths if they bypass the helpers | Use `append_sanitization_report()` / `append_audit_event()` and keep PII-bearing filename tests green |
-| Phase 4 UI browser checks are local-only | The PR has unit/API tests, but the real browser workflow is not yet automated in GitHub CI | Phase 5 should add a CI-friendly browser/integration gate or equivalent scripted acceptance check |
-| Demo is not packaged yet | The app is presentable once the server is running, but IT reviewers still need a single command/app-style launch | Phase 6 should add `cloakroom demo`, runbook, and optional app wrapper |
+| Phase 5/6 hosted checks pending | The new browser acceptance workflow and launcher changes have passed locally but need GitHub-hosted confirmation after push | Push branch, wait for CI/Security/EC-15/Demo Acceptance, then record hosted closeout |
+| Signed native app not built | `cloakroom demo` gives a one-command local web demo, but not a signed macOS `.app` | Optional Phase 6 follow-up if IT review specifically requires signed app packaging |
 | Hebrew NER quality in this dev env | HE_PERSON detection on the bundled HE sample relies on `xx_ent_wiki_sm` fallback | Production install: `python -m spacy download he_core_news_sm`. Phase 1 explicitly does not assert HE_PERSON on the bundled sample. |
 | Demo-rule false positives in non-demo workspaces | Default ruleset includes `Acme Health`, `Project Lantern`, etc. — fine for the killer demo, wrong for a real customer | Default ruleset is opt-in via the `demo_ruleset=` constructor argument; pipeline default is `None`, so no production change. |
 | Stale local + remote branches confuse new clones | `codex/handoff-b-status-doc(-clean)` and `feature/rename-to-cloakroom` are no longer load-bearing | Optional cleanup task: delete both remotes and the local rename branch after the Phase 1 PR merges. |
@@ -499,7 +565,7 @@ uv run python -m spacy download en_core_web_lg
 uv run python -m spacy download he_core_news_sm   # or xx_ent_wiki_sm
 
 # 2. Full test suite.
-uv run pytest -q                           # expect 321 passed
+uv run pytest -q                           # expect 324 passed
 
 # 3. EC-15 state integrity gate.
 uv run pytest -q tests/test_state_integrity/test_ec15_state_integrity.py
@@ -508,10 +574,12 @@ uv run pytest -q tests/test_state_integrity/test_ec15_state_integrity.py
 uv run python scripts/demo_walkthrough.py
 
 # 5. Local demo UI/backend.
-uv run cloakroom-demo-server --host 127.0.0.1 --port 8765
-# then open http://127.0.0.1:8765/
+uv run cloakroom demo
 
-# 6. Swift wrapper build + invariant harness.
+# 6. Browser acceptance gate.
+node scripts/demo_browser_acceptance.mjs --screenshot-dir /tmp/cloakroom-demo-acceptance
+
+# 7. Swift wrapper build + invariant harness.
 swift build --package-path wrapper/CloakroomWrapper
 swift run --package-path wrapper/CloakroomWrapper wrapper-invariant-checks
 ```
@@ -538,3 +606,5 @@ The CI filter cleanup commit needs `gh auth refresh -s workflow` first (the exis
 - **Existing UI surfaces** (internal-only, not the killer demo): [src/cloakroom/ui/gradio_app.py](src/cloakroom/ui/gradio_app.py), [src/cloakroom/tui/app.py](src/cloakroom/tui/app.py).
 - **Killer-demo backend:** [src/cloakroom/demo_server/app.py](src/cloakroom/demo_server/app.py) (`create_app`, `DemoRuntime`, local-only FastAPI endpoints).
 - **Killer-demo UI:** [src/cloakroom/demo_server/static/](src/cloakroom/demo_server/static/) (`Shield for AI`, `Restore`, `Trust Center` single-page app served from `/`).
+- **Killer-demo acceptance:** [scripts/demo_browser_acceptance.mjs](scripts/demo_browser_acceptance.mjs) and [.github/workflows/demo-acceptance.yml](.github/workflows/demo-acceptance.yml).
+- **Killer-demo runbook:** [docs/Cloakroom_Demo_Runbook.md](docs/Cloakroom_Demo_Runbook.md). Preferred launch command: `uv run cloakroom demo`.
