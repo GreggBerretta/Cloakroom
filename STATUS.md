@@ -16,10 +16,10 @@ This document is the operational state of the Cloakroom codebase. The Master PRD
 |---|---|
 | Canonical tree | `/Users/greggberretta/Documents/New project/Cloakroom` |
 | GitHub default branch | `main` (changed 2026-04-29 from `codex/handoff-b-status-doc`) |
-| Active feature branch | `feature/demo-rules-and-il-entities` (draft PR [#1](https://github.com/GreggBerretta/Cloakroom/pull/1) open; includes dependency swap, teammate setup guide, CI filter cleanup, attestation safety redesign, and Swift wrapper false-success fixes) |
+| Active feature branch | `feature/demo-rules-and-il-entities` (draft PR [#1](https://github.com/GreggBerretta/Cloakroom/pull/1) open; includes dependency swap, teammate setup guide, CI filter cleanup, attestation safety redesign, and Swift wrapper false-success fixes; hosted closeout checks green) |
 | Stale local branches | `codex/handoff-b-status-doc`, `feature/rename-to-cloakroom` (kept as historical refs; deletable) |
 | Stale remote branches | `codex/handoff-b-status-doc`, `codex/handoff-b-status-doc-clean` (consider deleting after Phase 1 PR merges) |
-| Working tree | Clean after latest wrapper-safety/attestation cleanup commit |
+| Working tree | Clean after latest status closeout commit |
 | Engine tests | **333 passing** on the active branch (was 329; +4 from PR closeout safety cleanup) |
 | Swift build | Pass on 2026-04-30 after Swift wrapper false-success fixes |
 
@@ -434,6 +434,7 @@ Browser verification used installed Chrome headless/CDP fallback because Browser
 - **Phase 4 hosted checks** — passed on 2026-04-29 after the demo UI commit was pushed: CI tests, Security Scan dependency audit, EC-15, and manual `performance-gate.yml`.
 - **Phase 5/6 hosted checks** — passed on 2026-04-30 after the workflow fix: Demo Acceptance passed in 1m0s ([run](https://github.com/GreggBerretta/Cloakroom/actions/runs/25150299365)), CI tests passed in 1m35s, Security Scan dependency audit passed in 22s, and both EC-15 jobs passed (59s / 43s). Historical note: the first hosted Demo Acceptance run on `b94c5cf` timed out waiting for Shield output; the hardened re-run on `763e1c8` identified that the workflow lacked `xx_ent_wiki_sm`, which is now installed.
 - **Dependency-swap hosted checks** — passed on 2026-04-30 after `7c016d2` was pushed: Demo Acceptance passed in 56s ([run](https://github.com/GreggBerretta/Cloakroom/actions/runs/25162106630)), CI tests passed in 43s, Security Scan dependency audit passed in 16s, and both EC-15 jobs passed (34s / 35s). This confirms pdfplumber/reportlab work on GitHub macOS runners.
+- **PR closeout safety hosted checks** — passed on 2026-04-30 after the wrapper-safety/attestation cleanup was pushed: Demo Acceptance passed in 52s ([run](https://github.com/GreggBerretta/Cloakroom/actions/runs/25162754701)), CI tests passed in 47s, Security Scan dependency audit passed in 15s, and both EC-15 jobs passed (45s / 41s). This confirms the text IPC lane, Swift wrapper changes, AttestationRecord redesign, and CI filter cleanup on GitHub macOS runners.
 - **Local closeout validation** — latest completed on 2026-04-30:
   - `uv run pytest -q` -> 333 passed, 1 warning
   - `swift build --package-path wrapper/CloakroomWrapper` -> pass
@@ -596,7 +597,6 @@ Delta vs. pre-optimization: English anonymize 48.95 s → 1.96 s (~96% faster); 
 
 | Item | Why | Phase |
 |---|---|---|
-| Re-check hosted PR [#1](https://github.com/GreggBerretta/Cloakroom/pull/1) checks on the final closeout tip | Local tests are green, but merge should wait for GitHub Actions on the exact pushed commit | Phase 1/2/3/4/5/6 closeout |
 | Human-review and merge draft PR [#1](https://github.com/GreggBerretta/Cloakroom/pull/1) once final tip checks are green | Branch is ready end-to-end through Phase 6 + dependency swap + cleanup | Phase 1/2/3/4/5/6 closeout |
 
 ### 6.2 Demo build-out (per the execution plan)
