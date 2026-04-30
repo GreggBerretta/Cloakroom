@@ -194,6 +194,7 @@ Current Phase 5 implementation is on the active branch after the Phase 4 commits
 - Asserts the PRD §9 failure proof: mutated `[PERSON_00001]` -> `[PERSON_001]`, `Restore blocked`, expected/found token copy, and no partial restored output.
 - Asserts AI-safe output contains 12 replacements, 0 raw demo leaks, masked review rows, and no desktop/mobile horizontal overflow.
 - Writes screenshots for review: `shield.png`, `restore-blocked.png`, `trust-center.png`, and `mobile.png`.
+- CI-hardened on 2026-04-30 after the first hosted run exposed a cold-start timing gap: the gate now arms CDP diagnostics before navigation, allows a 120s Shield timeout, and dumps page/server/browser diagnostics plus `failure.png` if the hosted browser path fails.
 
 **Hosted gate** ([.github/workflows/demo-acceptance.yml](.github/workflows/demo-acceptance.yml))
 - New GitHub Actions workflow: `Demo Acceptance`.
@@ -316,6 +317,7 @@ Run command: `uv run pytest -q` (canonical tree).
 [scripts/demo_browser_acceptance.mjs](scripts/demo_browser_acceptance.mjs):
 - Browser gate starts the local server, drives Chrome through Shield, Restore-blocked, Trust Center, and mobile layout.
 - Local run passed with 12 replacements, 0 leaks, 1 changed/invented token blocked, 0 partial output, and mobile no-overflow.
+- Hosted hardening run pending after the 2026-04-30 timeout/diagnostics fix.
 
 [tests/test_demo_server/test_app.py](tests/test_demo_server/test_app.py):
 - `test_demo_url_formats_loopback_hosts`
@@ -347,6 +349,7 @@ Browser verification used installed Chrome headless/CDP fallback because Browser
 - Trust Center path: confirmed mappings, shield events, audit-safe rows, local bind host `127.0.0.1`, external AI calls `0`, encrypted vault, and reports excluding original values.
 - Screenshot artifacts from this local QA pass were written to `/tmp/cloakroom_phase4_desktop_after_shield.png`, `/tmp/cloakroom_phase4_mobile_checked.png`, `/tmp/cloakroom_phase4_restore_blocked.png`, and `/tmp/cloakroom_phase4_trust_center.png`.
 - Phase 5 acceptance screenshots were written to `/tmp/cloakroom_phase5_acceptance/`.
+- Phase 5 hardened acceptance screenshots were written to `/tmp/cloakroom_phase5_acceptance_after_fix/`.
 
 ### 3.9 GitHub-hosted closeout validation
 
@@ -355,6 +358,7 @@ Browser verification used installed Chrome headless/CDP fallback because Browser
 - **Phase 2 hosted checks** — passed on 2026-04-29 after the audit/report safety commit was pushed: CI tests, Security Scan dependency audit, EC-15, and manual `performance-gate.yml`.
 - **Phase 3 hosted checks** — passed on 2026-04-29 after the demo backend commit was pushed: CI tests, Security Scan dependency audit, EC-15, and manual `performance-gate.yml`.
 - **Phase 4 hosted checks** — passed on 2026-04-29 after the demo UI commit was pushed: CI tests, Security Scan dependency audit, EC-15, and manual `performance-gate.yml`.
+- **Phase 5/6 hosted Demo Acceptance** — first hosted run on commit `b94c5cf` failed on 2026-04-30 while waiting 45s for the first cold Shield result. Local reproduction still passed. The acceptance gate has been hardened with pre-navigation CDP instrumentation, 120s cold-start patience, and failure diagnostics; hosted re-run is pending on the next push.
 - **Local closeout validation** — latest completed on 2026-04-30:
   - `uv run pytest -q` -> 324 passed, 1 warning
   - `swift build --package-path wrapper/CloakroomWrapper` -> pass
@@ -367,6 +371,7 @@ Browser verification used installed Chrome headless/CDP fallback because Browser
   - `node --check src/cloakroom/demo_server/static/app.js` -> pass
   - `node --check scripts/demo_browser_acceptance.mjs` -> pass
   - `node scripts/demo_browser_acceptance.mjs --screenshot-dir /tmp/cloakroom_phase5_acceptance` -> pass
+  - `node scripts/demo_browser_acceptance.mjs --screenshot-dir /tmp/cloakroom_phase5_acceptance_after_fix` -> pass
   - `uv run cloakroom demo --host 127.0.0.1 --port <random> --no-open-browser` + `/api/health` -> pass
 
 ---
@@ -403,7 +408,9 @@ Browser verification used installed Chrome headless/CDP fallback because Browser
 
 ### 4.2 Failing
 
-None at this moment.
+| Gate | State |
+|---|---|
+| Phase 5/6 hosted Demo Acceptance | First hosted run on `b94c5cf` timed out waiting for the cold Shield UI result after 45s. Current branch includes a timeout/diagnostics fix and needs hosted confirmation on the next push. |
 
 ### 4.3 Known regressions / edge cases left open
 

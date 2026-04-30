@@ -25,6 +25,14 @@ const RAW_SENSITIVE_VALUES = [
   "Q3 churn containment plan",
   "pre-acquisition integration risk",
 ];
+const SHIELD_TIMEOUT_MS = Number.parseInt(
+  process.env.CLOAKROOM_ACCEPTANCE_SHIELD_TIMEOUT_MS || "120000",
+  10,
+);
+const RESTORE_TIMEOUT_MS = Number.parseInt(
+  process.env.CLOAKROOM_ACCEPTANCE_RESTORE_TIMEOUT_MS || "60000",
+  10,
+);
 
 function parseArgs(argv) {
   const args = {
@@ -148,6 +156,7 @@ class CdpSession {
     this.wsUrl = wsUrl;
     this.nextId = 1;
     this.pending = new Map();
+    this.events = [];
   }
 
   async connect() {
@@ -164,6 +173,11 @@ class CdpSession {
           reject(new Error(message.error.message));
         } else {
           resolve(message.result || {});
+        }
+      } else if (message.method) {
+        this.events.push(this._summarizeEvent(message.method, message.params || {}));
+        if (this.events.length > 250) {
+          this.events.shift();
         }
       }
     };
@@ -197,6 +211,49 @@ class CdpSession {
   close() {
     this.ws?.close();
   }
+
+  _summarizeEvent(method, params) {
+    if (method === "Runtime.consoleAPICalled") {
+      return {
+        method,
+        type: params.type,
+        args: (params.args || []).map((arg) => arg.value ?? arg.description ?? arg.type).slice(0, 6),
+      };
+    }
+    if (method === "Runtime.exceptionThrown") {
+      return {
+        method,
+        text: params.exceptionDetails?.text,
+        description: params.exceptionDetails?.exception?.description,
+      };
+    }
+    if (method === "Log.entryAdded") {
+      return {
+        method,
+        level: params.entry?.level,
+        source: params.entry?.source,
+        text: params.entry?.text,
+        url: params.entry?.url,
+      };
+    }
+    if (method === "Network.loadingFailed") {
+      return {
+        method,
+        url: params.requestId,
+        errorText: params.errorText,
+        canceled: params.canceled,
+      };
+    }
+    if (method === "Network.responseReceived") {
+      return {
+        method,
+        url: params.response?.url,
+        status: params.response?.status,
+        mimeType: params.response?.mimeType,
+      };
+    }
+    return { method };
+  }
 }
 
 async function waitForExpression(cdp, expression, description, timeoutMs = 30000) {
@@ -218,6 +275,76 @@ async function screenshot(cdp, screenshotDir, name) {
   const filePath = path.join(screenshotDir, `${name}.png`);
   fs.writeFileSync(filePath, Buffer.from(result.data, "base64"));
   return filePath;
+}
+
+async function collectPageDiagnostics(cdp) {
+  const raw = await cdp.evaluate(`JSON.stringify({
+    url: location.href,
+    readyState: document.readyState,
+    bodyClass: document.body?.className || "",
+    sourceLoaded: document.querySelector('#source-input')?.value.includes('Sarah Morgan') || false,
+    shieldButtonDisabled: document.querySelector('#shield-button')?.disabled || false,
+    pipelineTitle: document.querySelector('#pipeline-title')?.innerText || "",
+    pipelineStatus: document.querySelector('#pipeline-status')?.innerText || "",
+    safeStatus: document.querySelector('#safe-status')?.innerText || "",
+    safeOutput: document.querySelector('#safe-output')?.innerText || "",
+    replaced: document.querySelector('#metric-replaced')?.innerText || "",
+    leaks: document.querySelector('#metric-leaks')?.innerText || "",
+    reviewRows: document.querySelectorAll('#review-table-body tr').length,
+    restoreStatus: document.querySelector('#restore-status')?.innerText || "",
+    restoreError: document.querySelector('#restore-error')?.innerText || "",
+    toastHidden: document.querySelector('#toast')?.hidden ?? true,
+    toastText: document.querySelector('#toast')?.innerText || ""
+  })`);
+  return JSON.parse(raw);
+}
+
+function readFileTail(filePath, maxChars = 12000) {
+  try {
+    const text = fs.readFileSync(filePath, "utf8");
+    if (text.length <= maxChars) {
+      return text;
+    }
+    return text.slice(text.length - maxChars);
+  } catch (error) {
+    return `(unable to read ${filePath}: ${error.message})`;
+  }
+}
+
+async function dumpFailureDiagnostics(cdp, screenshotDir, serverLog, browserLog) {
+  if (cdp) {
+    try {
+      const failureScreenshot = await screenshot(cdp, screenshotDir, "failure");
+      console.error(`Failure screenshot: ${failureScreenshot}`);
+    } catch (error) {
+      console.error(`Failure screenshot unavailable: ${error.message}`);
+    }
+    try {
+      console.error("Page diagnostics:");
+      console.error(JSON.stringify(await collectPageDiagnostics(cdp), null, 2));
+    } catch (error) {
+      console.error(`Page diagnostics unavailable: ${error.message}`);
+    }
+    const interestingEvents = cdp.events.filter((event) => {
+      if (event.method === "Network.responseReceived") {
+        return Number(event.status || 0) >= 400;
+      }
+      return [
+        "Runtime.consoleAPICalled",
+        "Runtime.exceptionThrown",
+        "Log.entryAdded",
+        "Network.loadingFailed",
+      ].includes(event.method);
+    });
+    if (interestingEvents.length) {
+      console.error("Browser/CDP events:");
+      console.error(JSON.stringify(interestingEvents, null, 2));
+    }
+  }
+  console.error(`--- server log tail (${serverLog}) ---`);
+  console.error(readFileTail(serverLog));
+  console.error(`--- browser log tail (${browserLog}) ---`);
+  console.error(readFileTail(browserLog));
 }
 
 async function runAcceptance() {
@@ -254,7 +381,7 @@ async function runAcceptance() {
         "--no-first-run",
         "--disable-background-networking",
         "--disable-component-update",
-        url,
+        "about:blank",
       ],
       browserLog,
     );
@@ -266,6 +393,9 @@ async function runAcceptance() {
     await cdp.connect();
     await cdp.call("Runtime.enable");
     await cdp.call("Page.enable");
+    await cdp.call("Log.enable");
+    await cdp.call("Network.enable");
+    await cdp.call("Page.navigate", { url });
 
     await waitForExpression(
       cdp,
@@ -277,7 +407,7 @@ async function runAcceptance() {
       cdp,
       "document.querySelector('#safe-output')?.innerText.includes('[PERSON_00001]')",
       "shielded AI-safe output",
-      45000,
+      SHIELD_TIMEOUT_MS,
     );
 
     const shield = JSON.parse(
@@ -317,7 +447,7 @@ async function runAcceptance() {
       cdp,
       "document.querySelector('#restore-status')?.innerText.includes('Blocked')",
       "blocked restore state",
-      30000,
+      RESTORE_TIMEOUT_MS,
     );
     const restore = JSON.parse(
       await cdp.evaluate(`JSON.stringify({
@@ -419,6 +549,7 @@ async function runAcceptance() {
     console.error(`Demo browser acceptance failed: ${error.message}`);
     console.error(`Server log: ${serverLog}`);
     console.error(`Browser log: ${browserLog}`);
+    await dumpFailureDiagnostics(cdp, args.screenshotDir, serverLog, browserLog);
     process.exitCode = 1;
   } finally {
     cdp?.close();
