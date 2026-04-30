@@ -318,7 +318,7 @@ Run command: `uv run pytest -q` (canonical tree).
 [scripts/demo_browser_acceptance.mjs](scripts/demo_browser_acceptance.mjs):
 - Browser gate starts the local server, drives Chrome through Shield, Restore-blocked, Trust Center, and mobile layout.
 - Local run passed with 12 replacements, 0 leaks, 1 changed/invented token blocked, 0 partial output, and mobile no-overflow.
-- Hosted hardening run exposed missing Hebrew fallback model installation in the workflow; workflow fix pending hosted confirmation.
+- Hosted gate passed on 2026-04-30 after adding the multilingual Hebrew fallback spaCy model to the workflow.
 
 [tests/test_demo_server/test_app.py](tests/test_demo_server/test_app.py):
 - `test_demo_url_formats_loopback_hosts`
@@ -360,7 +360,7 @@ Browser verification used installed Chrome headless/CDP fallback because Browser
 - **Phase 2 hosted checks** — passed on 2026-04-29 after the audit/report safety commit was pushed: CI tests, Security Scan dependency audit, EC-15, and manual `performance-gate.yml`.
 - **Phase 3 hosted checks** — passed on 2026-04-29 after the demo backend commit was pushed: CI tests, Security Scan dependency audit, EC-15, and manual `performance-gate.yml`.
 - **Phase 4 hosted checks** — passed on 2026-04-29 after the demo UI commit was pushed: CI tests, Security Scan dependency audit, EC-15, and manual `performance-gate.yml`.
-- **Phase 5/6 hosted Demo Acceptance** — first hosted run on commit `b94c5cf` failed on 2026-04-30 while waiting 45s for the first cold Shield result. The hardened re-run on `763e1c8` revealed the real backend error: the demo workflow installed only `en_core_web_lg`, but Cloakroom's model-hash lock also resolves the Hebrew spaCy backend, so `xx_ent_wiki_sm` was missing. The workflow now installs `xx_ent_wiki_sm`; hosted confirmation is pending on the next push.
+- **Phase 5/6 hosted checks** — passed on 2026-04-30 after the workflow fix: Demo Acceptance passed in 1m0s ([run](https://github.com/GreggBerretta/Cloakroom/actions/runs/25150299365)), CI tests passed in 1m35s, Security Scan dependency audit passed in 22s, and both EC-15 jobs passed (59s / 43s). Historical note: the first hosted Demo Acceptance run on `b94c5cf` timed out waiting for Shield output; the hardened re-run on `763e1c8` identified that the workflow lacked `xx_ent_wiki_sm`, which is now installed.
 - **Local closeout validation** — latest completed on 2026-04-30:
   - `uv run pytest -q` -> 324 passed, 1 warning
   - `swift build --package-path wrapper/CloakroomWrapper` -> pass
@@ -408,13 +408,13 @@ Browser verification used installed Chrome headless/CDP fallback because Browser
 | Phase 4 hosted PR checks | Pass: CI tests, Security Scan dependency audit, EC-15 |
 | Phase 4 hosted performance gate | Pass: anonymize 7.49s, restore 0.70s, clipboard 0.62s |
 | Phase 5 browser acceptance gate | Pass locally: `scripts/demo_browser_acceptance.mjs` |
+| Phase 5 hosted browser acceptance gate | Pass: GitHub Demo Acceptance, 1m0s on 2026-04-30 |
 | Phase 6 demo launcher smoke | Pass locally: `uv run cloakroom demo --no-open-browser` health check |
+| Phase 5/6 hosted PR checks | Pass: CI tests, Security Scan dependency audit, EC-15, Demo Acceptance |
 
 ### 4.2 Failing
 
-| Gate | State |
-|---|---|
-| Phase 5/6 hosted Demo Acceptance | First hosted run timed out, then the hardened run identified a missing Hebrew fallback spaCy model in the workflow. Current branch installs `xx_ent_wiki_sm` and needs hosted confirmation on the next push. |
+None at this moment.
 
 ### 4.3 Known regressions / edge cases left open
 
@@ -521,8 +521,8 @@ Delta vs. pre-optimization: English anonymize 48.95 s → 1.96 s (~96% faster); 
 
 | Item | Why | Phase |
 |---|---|---|
-| Human-review and merge draft PR [#1](https://github.com/GreggBerretta/Cloakroom/pull/1) when ready | Branch is pushed, PR is open, and local closeout gates have passed through Phase 6. Hosted checks need to complete after the Phase 5/6 push. | Phase 1/2/3/4/5/6 closeout |
-| Run `gh auth refresh -s workflow` and land the deferred CI filter cleanup (drop `codex/**`, leave `main` + `pull_request`) | The change is already prepared; the OAuth token didn't have `workflow` scope when we tried | Phase 0 leftover |
+| Human-review and merge draft PR [#1](https://github.com/GreggBerretta/Cloakroom/pull/1) when ready | Branch is pushed, PR is open, and hosted/local closeout gates have passed through Phase 6. | Phase 1/2/3/4/5/6 closeout |
+| Land the deferred CI filter cleanup (drop `codex/**`, leave `main` + `pull_request`) | OAuth `workflow` scope was refreshed on 2026-04-30; cleanup remains a small repo-hygiene follow-up, not a demo blocker | Phase 0 leftover |
 
 ### 6.2 Demo build-out (per the execution plan)
 
@@ -556,7 +556,6 @@ Tracked but not blocking the buyer demo:
 |---|---|---|
 | Follow-up pushes can stale PR checks | A final documentation or review fix can require checks to be re-run before merge | Re-check PR [#1](https://github.com/GreggBerretta/Cloakroom/pull/1) immediately before merging |
 | Follow-up raw path additions | New report/audit call sites could reintroduce raw paths if they bypass the helpers | Use `append_sanitization_report()` / `append_audit_event()` and keep PII-bearing filename tests green |
-| Phase 5/6 hosted checks pending | The new browser acceptance workflow and launcher changes have passed locally but need GitHub-hosted confirmation after push | Push branch, wait for CI/Security/EC-15/Demo Acceptance, then record hosted closeout |
 | Signed native app not built | `cloakroom demo` gives a one-command local web demo, but not a signed macOS `.app` | Optional Phase 6 follow-up if IT review specifically requires signed app packaging |
 | Hebrew NER quality in this dev env | HE_PERSON detection on the bundled HE sample relies on `xx_ent_wiki_sm` fallback | Production install: `python -m spacy download he_core_news_sm`. Phase 1 explicitly does not assert HE_PERSON on the bundled sample. |
 | Demo-rule false positives in non-demo workspaces | Default ruleset includes `Acme Health`, `Project Lantern`, etc. — fine for the killer demo, wrong for a real customer | Default ruleset is opt-in via the `demo_ruleset=` constructor argument; pipeline default is `None`, so no production change. |
@@ -603,7 +602,7 @@ git push -u origin feature/demo-rules-and-il-entities
 gh pr create --base main --fill
 ```
 
-The CI filter cleanup commit needs `gh auth refresh -s workflow` first (the existing token has `repo` but not `workflow`).
+The GitHub CLI token now has `workflow` scope as of 2026-04-30; the CI filter cleanup is still a small repo-hygiene follow-up.
 
 ---
 
