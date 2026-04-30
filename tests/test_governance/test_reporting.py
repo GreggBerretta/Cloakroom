@@ -177,3 +177,33 @@ def test_report_hash_chain_detects_tampering(tmp_path):
 
     tampered_rows = read_sanitization_reports(ctx)
     assert [row["chain_verified"] for row in tampered_rows] == [False, False]
+
+
+def test_export_sanitization_reports_pdf_writes_valid_pdf(tmp_path):
+    ctx = _make_ctx(tmp_path)
+    append_sanitization_report(
+        ctx,
+        operation="anonymize",
+        file_path="/tmp/customer_escalation.md",
+        file_ext=".md",
+        file_hash="e" * 64,
+        duration_ms=42,
+        language="en",
+        entity_counts={"PERSON": 1, "EMAIL": 1},
+        entities_total=2,
+        tokens_applied=2,
+    )
+    out_path = tmp_path / "report.pdf"
+    result_path = export_sanitization_reports(ctx, output_path=out_path, fmt="pdf")
+    assert result_path == out_path.expanduser().resolve()
+    payload = result_path.read_bytes()
+    assert payload.startswith(b"%PDF-"), "Output is not a PDF"
+    assert len(payload) > 200, "PDF looks suspiciously small"
+
+
+def test_export_sanitization_reports_pdf_handles_empty_workspace(tmp_path):
+    ctx = _make_ctx(tmp_path)
+    out_path = tmp_path / "empty.pdf"
+    export_sanitization_reports(ctx, output_path=out_path, fmt="pdf")
+    payload = out_path.read_bytes()
+    assert payload.startswith(b"%PDF-")

@@ -295,20 +295,27 @@ def _extract_column_prefix_from_token(token_text: str) -> str:
 
 
 def _export_reports_pdf(rows: list[dict[str, Any]], path: Path, *, workspace_name: str) -> None:
-    import fitz
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfgen import canvas
 
-    doc = fitz.open()
-    page = doc.new_page()
-    y = 48.0
-    page.insert_text((48, y), f"Cloakroom Sanitization Report: {workspace_name}", fontsize=12)
-    y += 20.0
+    page_width, page_height = A4
+    left_margin = 48.0
+    top_margin = 48.0
+    bottom_margin = 48.0
+
+    c = canvas.Canvas(str(path), pagesize=A4)
+    y = page_height - top_margin
+    c.setFont("Helvetica", 12)
+    c.drawString(left_margin, y, f"Cloakroom Sanitization Report: {workspace_name}")
+    y -= 20.0
 
     if not rows:
-        page.insert_text((48, y), "No report entries found.", fontsize=10)
-        doc.save(str(path))
-        doc.close()
+        c.setFont("Helvetica", 10)
+        c.drawString(left_margin, y, "No report entries found.")
+        c.save()
         return
 
+    c.setFont("Helvetica", 9)
     for row in rows:
         line = (
             f"{row.get('timestamp', '')} | {row.get('operation', '')} | "
@@ -316,14 +323,14 @@ def _export_reports_pdf(rows: list[dict[str, Any]], path: Path, *, workspace_nam
             f"tokens_applied={row.get('tokens_applied', 0)} | "
             f"tokens_restored={row.get('tokens_restored', 0)}"
         )
-        if y > 770:
-            page = doc.new_page()
-            y = 48.0
-        page.insert_text((48, y), line[:180], fontsize=9)
-        y += 14.0
+        if y < bottom_margin + 14.0:
+            c.showPage()
+            c.setFont("Helvetica", 9)
+            y = page_height - top_margin
+        c.drawString(left_margin, y, line[:180])
+        y -= 14.0
 
-    doc.save(str(path))
-    doc.close()
+    c.save()
 
 
 def _secure_opener(path: str, flags: int) -> int:

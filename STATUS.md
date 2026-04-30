@@ -545,7 +545,7 @@ Tracked but not blocking the buyer demo:
 - Crash atomicity / staged-output reconciliation.
 - Real LLM mutation harness against representative corpora.
 - License/entitlement system upgrade (currently regex/env-var based).
-- Third-party model/license review (spaCy, Presidio, Hebrew models, Stanza, Transformers, PyMuPDF, Gradio, Textual, Swift deps).
+- Third-party model/license review (spaCy, Presidio, Hebrew models, Stanza, Transformers, pdfplumber, reportlab, Gradio, Textual, Swift deps). PyMuPDF was removed in favor of pdfplumber + reportlab to avoid the AGPL/commercial licensing decision.
 - Reconciliation of the 95.74 s vs. 1.96 s perf numbers between the master release-gates doc and the actual benchmark.
 
 ---

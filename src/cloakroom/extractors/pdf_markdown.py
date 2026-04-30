@@ -31,15 +31,15 @@ class PDFExtractor:
             errors.append(f"docling failed ({exc.__class__.__name__})")
 
         try:
-            return self._extract_with_pymupdf(input_path)
+            return self._extract_with_pdfplumber(input_path)
         except ImportError:
-            errors.append("PyMuPDF not installed")
+            errors.append("pdfplumber not installed")
         except Exception as exc:  # pragma: no cover - backend-specific failures
-            errors.append(f"PyMuPDF failed ({exc.__class__.__name__})")
+            errors.append(f"pdfplumber failed ({exc.__class__.__name__})")
 
         detail = "; ".join(errors) if errors else "no extractor available"
         raise PdfExtractionError(
-            "PDF extraction failed. Install docling or pymupdf and retry. "
+            "PDF extraction failed. Install docling or pdfplumber and retry. "
             f"Details: {detail}."
         )
 
@@ -65,22 +65,22 @@ class PDFExtractor:
         return PDFExtractionResult(markdown=markdown, backend="docling")
 
     @staticmethod
-    def _extract_with_pymupdf(input_path: Path) -> PDFExtractionResult:
-        import fitz
+    def _extract_with_pdfplumber(input_path: Path) -> PDFExtractionResult:
+        import pdfplumber
 
         page_sections: list[str] = []
-        with fitz.open(str(input_path)) as doc:
-            for idx, page in enumerate(doc):
-                page_text = page.get_text("text").strip()
+        with pdfplumber.open(str(input_path)) as pdf:
+            for idx, page in enumerate(pdf.pages):
+                page_text = (page.extract_text() or "").strip()
                 if not page_text:
                     continue
                 page_sections.append(f"## Page {idx + 1}\n\n{page_text}")
 
         markdown = "\n\n".join(page_sections).strip()
         if not markdown:
-            raise PdfExtractionError("PyMuPDF extracted empty markdown from PDF.")
+            raise PdfExtractionError("pdfplumber extracted empty markdown from PDF.")
 
-        return PDFExtractionResult(markdown=markdown, backend="pymupdf")
+        return PDFExtractionResult(markdown=markdown, backend="pdfplumber")
 
 
 def extract_pdf_to_markdown(input_path: Path) -> str:

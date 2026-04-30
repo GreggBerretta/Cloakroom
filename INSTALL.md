@@ -268,16 +268,16 @@ export CLOAKROOM_HEBREW_TRANSFORMER_MODEL=CordwainerSmith/GolemPII-v1
 ## PDF Extraction Backends
 Default behavior:
 - Docling-first extraction if installed.
-- Automatic fallback to PyMuPDF.
+- Automatic fallback to pdfplumber (bundled).
 
 Install Docling support (recommended for better layout fidelity):
 ```bash
 uv sync --extra pdf_docling
 ```
 
-Verify PyMuPDF fallback is available:
+Verify the pdfplumber fallback is available:
 ```bash
-uv run python -c "import fitz; print('PyMuPDF OK')"
+uv run python -c "import pdfplumber; print('pdfplumber OK')"
 ```
 
 ## Key Recovery (Admin)
