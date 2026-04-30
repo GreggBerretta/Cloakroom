@@ -1,0 +1,48 @@
+name: Demo Acceptance
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  browser-acceptance:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Sync dependencies
+        run: uv sync --extra dev
+
+      - name: Ensure pip exists for spaCy downloader
+        run: uv run python -m ensurepip
+
+      - name: Install English spaCy model
+        run: uv run python -m spacy download en_core_web_lg
+
+      - name: Install Hebrew fallback spaCy model
+        run: uv run python -m spacy download xx_ent_wiki_sm
+
+      - name: Run demo browser acceptance gate
+        run: node scripts/demo_browser_acceptance.mjs --screenshot-dir demo-acceptance-artifacts
+
+      - name: Upload demo screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: demo-acceptance-artifacts
+          path: demo-acceptance-artifacts
+          if-no-files-found: ignore

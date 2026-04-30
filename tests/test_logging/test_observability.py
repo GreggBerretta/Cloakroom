@@ -160,3 +160,32 @@ def test_audit_log_hmac_tamper_detection(tmp_path):
     assert len(tampered_rows) == 1
     assert tampered_rows[0].verified is False
 
+
+def test_audit_event_replaces_raw_file_path_with_safe_reference(tmp_path):
+    ctx = _make_workspace_context(tmp_path)
+    toxic_path = tmp_path / "Jane Smith john.smith@acme.com 123-45-6789 Project Lantern.csv"
+
+    append_audit_event(
+        ctx,
+        event="file_anonymized",
+        fields={
+            "file_path": str(toxic_path),
+            "file_hash": "e" * 64,
+            "file_ext": ".csv",
+        },
+    )
+
+    audit_path = audit_mod.audit_log_path_for_workspace_dir(ctx.vault.path.parent)
+    raw_audit = audit_path.read_text(encoding="utf-8")
+    assert str(toxic_path) not in raw_audit
+    assert "Jane Smith" not in raw_audit
+    assert "john.smith@acme.com" not in raw_audit
+    assert "123-45-6789" not in raw_audit
+    assert "Project Lantern" not in raw_audit
+
+    rows = read_audit_events(ctx)
+    fields = rows[0].record["fields"]
+    assert rows[0].verified is True
+    assert "file_path" not in fields
+    assert fields["file_hash"] == "e" * 64
+    assert fields["file_label_safe"] == "csv:eeeeeeeeeeee"

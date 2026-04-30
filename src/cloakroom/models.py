@@ -9,7 +9,13 @@ from typing import Protocol
 
 
 class EntityType(str, Enum):
-    """Supported PII entity types, mapping to Presidio entity type strings."""
+    """Supported PII and confidential-data entity types.
+
+    Members whose .value matches a Presidio entity string are produced by
+    Presidio NER. Members whose .value is Cloakroom-specific (e.g. PROJECT,
+    TEUDAT_ZEHUT) are produced only by the regex prefilter, the demo-rule
+    pre-pass, or post-detection promotion (e.g. HE_PERSON).
+    """
 
     PERSON = "PERSON"
     ORGANIZATION = "ORGANIZATION"
@@ -22,6 +28,21 @@ class EntityType(str, Enum):
     IP_ADDRESS = "IP_ADDRESS"
     URL = "URL"
     COLUMN = "COLUMN"
+
+    # Israeli/Hebrew first-class types
+    HE_PERSON = "HE_PERSON"
+    TEUDAT_ZEHUT = "TEUDAT_ZEHUT"
+    IL_PHONE = "IL_PHONE"
+    IL_ADDRESS = "IL_ADDRESS"
+    IL_BANK_ACCOUNT = "IL_BANK_ACCOUNT"
+
+    # Confidential business data types (driven by demo rules)
+    PROJECT = "PROJECT"
+    CONTRACT_VALUE = "CONTRACT_VALUE"
+    PRICING_TERM = "PRICING_TERM"
+    STRATEGY = "STRATEGY"
+    ADDRESS_LINE = "ADDRESS_LINE"
+    CUSTOMER_ID = "CUSTOMER_ID"
 
     @property
     def token_prefix(self) -> str:
@@ -38,6 +59,17 @@ class EntityType(str, Enum):
             EntityType.IP_ADDRESS: "IP",
             EntityType.URL: "URL",
             EntityType.COLUMN: "COL",
+            EntityType.HE_PERSON: "HE_PERSON",
+            EntityType.TEUDAT_ZEHUT: "TEUDAT_ZEHUT",
+            EntityType.IL_PHONE: "IL_PHONE",
+            EntityType.IL_ADDRESS: "IL_ADDRESS",
+            EntityType.IL_BANK_ACCOUNT: "IL_BANK_ACCOUNT",
+            EntityType.PROJECT: "PROJECT",
+            EntityType.CONTRACT_VALUE: "CONTRACT_VALUE",
+            EntityType.PRICING_TERM: "PRICING_TERM",
+            EntityType.STRATEGY: "STRATEGY",
+            EntityType.ADDRESS_LINE: "ADDRESS",
+            EntityType.CUSTOMER_ID: "CUSTOMER_ID",
         }
         return _prefixes[self]
 
@@ -311,7 +343,8 @@ class AttestationRecord:
     entity_types: dict[str, int]  # type -> count
     completion_time_seconds: float
     confirmed: bool
-    file_path: str
+    file_hash: str
+    file_label_safe: str
 
     def to_dict(self) -> dict:
         return {
@@ -321,11 +354,24 @@ class AttestationRecord:
             "entity_types": self.entity_types,
             "completion_time_seconds": self.completion_time_seconds,
             "confirmed": self.confirmed,
-            "file_path": self.file_path,
+            "file_hash": self.file_hash,
+            "file_label_safe": self.file_label_safe,
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> AttestationRecord:
+        file_hash = str(data.get("file_hash", ""))
+        file_label_safe = str(data.get("file_label_safe", ""))
+        if not file_hash or not file_label_safe:
+            from cloakroom.governance.file_identity import build_safe_file_reference
+
+            safe_ref = build_safe_file_reference(
+                data.get("file_path", ""),
+                file_hash=file_hash,
+                file_ext=str(data.get("file_ext", "")),
+            )
+            file_hash = safe_ref["file_hash"]
+            file_label_safe = safe_ref["file_label_safe"]
         return cls(
             timestamp=data["timestamp"],
             user=data["user"],
@@ -333,7 +379,8 @@ class AttestationRecord:
             entity_types=data["entity_types"],
             completion_time_seconds=data["completion_time_seconds"],
             confirmed=data["confirmed"],
-            file_path=data["file_path"],
+            file_hash=file_hash,
+            file_label_safe=file_label_safe,
         )
 
 

@@ -224,7 +224,7 @@ def main(ctx, verbose, no_logging, encrypt_logs):
             "[bold yellow]DEBUG logging enabled.[/] Logs are sanitized, "
             "but review before sharing externally."
         )
-    if not _is_onboarding_complete() and ctx.invoked_subcommand not in {None, "onboarding"}:
+    if not _is_onboarding_complete() and ctx.invoked_subcommand not in {None, "onboarding", "demo"}:
         console.print(
             "[bold yellow]First-run onboarding is not complete.[/] "
             "Run [bold]cloakroom onboarding[/] to create a workspace and export a recovery key."
@@ -1257,6 +1257,46 @@ def restore_clipboard_cmd(workspace, license_key):
         raise SystemExit(1)
 
 
+@main.command("demo")
+@click.option(
+    "--host",
+    default="127.0.0.1",
+    show_default=True,
+    help="Loopback host for the local demo UI.",
+)
+@click.option(
+    "--port",
+    type=int,
+    default=8765,
+    show_default=True,
+    help="Port for the local demo UI.",
+)
+@click.option(
+    "--open-browser/--no-open-browser",
+    default=True,
+    show_default=True,
+    help="Open the demo UI in the default browser.",
+)
+def demo_cmd(host, port, open_browser):
+    """Run the polished local Cloakroom buyer demo."""
+    try:
+        from cloakroom.demo_server.app import demo_url, run_demo_server, validate_bind_host
+
+        normalized_host = validate_bind_host(host)
+        url = demo_url(normalized_host, port)
+        console.print("[bold green]Starting Cloakroom demo[/]")
+        console.print(f"  Local URL: [cyan]{url}[/]")
+        console.print("  Scope:     [green]loopback/local only[/]")
+        console.print("  Stop:      Press Ctrl+C")
+        console.print()
+        run_demo_server(host=normalized_host, port=port, open_browser=open_browser)
+    except ValueError as exc:
+        console.print(f"[bold red]Error:[/] {exc}")
+        raise SystemExit(1)
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Cloakroom demo stopped.[/]")
+
+
 @main.command("ipc-server")
 @click.option(
     "--socket-path",
@@ -1787,7 +1827,7 @@ def workspace_report_show(workspace_name, limit):
             table.add_row(
                 str(row.get("timestamp", "")),
                 str(row.get("operation", "")),
-                str(row.get("file_ext", "")),
+                str(row.get("file_label_safe") or row.get("file_ext", "")),
                 str(row.get("duration_ms", "")),
                 str(row.get("entities_total", "")),
                 count_text,

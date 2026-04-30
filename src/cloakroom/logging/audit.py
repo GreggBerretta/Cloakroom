@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from cloakroom.governance.file_identity import scrub_file_references
 from cloakroom.logging.sanitizer import sanitize_value
 from cloakroom.vault.crypto import derive_hmac_key
 
@@ -34,7 +35,7 @@ def append_audit_event(
     fields: dict[str, Any],
 ) -> None:
     """Append a signed audit event for a workspace."""
-    safe_fields, _ = sanitize_value(fields)
+    safe_fields, _ = sanitize_value(scrub_file_references(fields))
     payload = {
         "event": event,
         "timestamp": datetime.now(timezone.utc).isoformat(),

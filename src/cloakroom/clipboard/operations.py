@@ -6,6 +6,7 @@ import hashlib
 import subprocess
 from dataclasses import dataclass
 from time import perf_counter
+from typing import Callable
 
 from cloakroom.detection.engine import DetectionEngine
 from cloakroom.exceptions import (
@@ -37,12 +38,14 @@ class ClipboardShieldResult:
     entities_found: int
     tokens_applied: int
     model_hash: str
+    anonymized_text: str = ""
 
 
 @dataclass
 class ClipboardRestoreResult:
     tokens_restored: int
     verification_passed: bool
+    restored_text: str = ""
 
 
 def shield_clipboard(
@@ -59,10 +62,72 @@ def shield_clipboard(
     override_user: str = "",
 ) -> ClipboardShieldResult:
     """Read clipboard, anonymize text in-memory, and overwrite clipboard."""
+    return _shield_text(
+        workspace_ctx,
+        text_reader=_pbpaste,
+        text_writer=_pbcopy,
+        score_threshold=score_threshold,
+        detection_mode=detection_mode,
+        language=language,
+        hebrew_backend=hebrew_backend,
+        hebrew_stanza_model=hebrew_stanza_model,
+        hebrew_transformer_model=hebrew_transformer_model,
+        force_reanonymize=force_reanonymize,
+        override_reason=override_reason,
+        override_user=override_user,
+    )
+
+
+def shield_clipboard_text(
+    workspace_ctx: WorkspaceContext,
+    text: str,
+    *,
+    score_threshold: float = 0.7,
+    detection_mode: str = "balanced",
+    language: str = "auto",
+    hebrew_backend: str | None = None,
+    hebrew_stanza_model: str | None = None,
+    hebrew_transformer_model: str | None = None,
+    force_reanonymize: bool = False,
+    override_reason: str = "",
+    override_user: str = "",
+) -> ClipboardShieldResult:
+    """Anonymize caller-provided clipboard text without touching the system clipboard."""
+    return _shield_text(
+        workspace_ctx,
+        text_reader=lambda: text,
+        text_writer=None,
+        score_threshold=score_threshold,
+        detection_mode=detection_mode,
+        language=language,
+        hebrew_backend=hebrew_backend,
+        hebrew_stanza_model=hebrew_stanza_model,
+        hebrew_transformer_model=hebrew_transformer_model,
+        force_reanonymize=force_reanonymize,
+        override_reason=override_reason,
+        override_user=override_user,
+    )
+
+
+def _shield_text(
+    workspace_ctx: WorkspaceContext,
+    *,
+    text_reader: Callable[[], str],
+    text_writer: Callable[[str], None] | None,
+    score_threshold: float,
+    detection_mode: str,
+    language: str,
+    hebrew_backend: str | None,
+    hebrew_stanza_model: str | None,
+    hebrew_transformer_model: str | None,
+    force_reanonymize: bool,
+    override_reason: str,
+    override_user: str,
+) -> ClipboardShieldResult:
     started = perf_counter()
     workspace_ctx.ensure_not_expired()
     with workspace_ctx.operation_lock():
-        text = _pbpaste()
+        text = text_reader()
         if not text.strip():
             raise CloakroomError("Clipboard is empty.")
 
@@ -120,7 +185,8 @@ def shield_clipboard(
                 raise ReplayMismatchError(expected=expected_output_hash, actual=output_hash)
             override_events.append("replay_hash_mismatch")
 
-        _pbcopy(anonymized_text)
+        if text_writer is not None:
+            text_writer(anonymized_text)
 
         file_record = FileRecord(
             file_path=CLIPBOARD_FILE_ID,
@@ -162,6 +228,7 @@ def shield_clipboard(
             operation="clipboard_anonymize",
             file_path=CLIPBOARD_FILE_ID,
             file_ext="clipboard",
+            file_hash=input_hash,
             duration_ms=duration_ms,
             language=language,
             entity_counts=build_anonymize_entity_counts(records, language=language),
@@ -176,15 +243,41 @@ def shield_clipboard(
             entities_found=len(entities),
             tokens_applied=len(records),
             model_hash=model_hash,
+            anonymized_text=anonymized_text,
         )
 
 
 def restore_clipboard(workspace_ctx: WorkspaceContext) -> ClipboardRestoreResult:
     """Read clipboard tokenized text, restore originals, and overwrite clipboard."""
+    return _restore_text(
+        workspace_ctx,
+        text_reader=_pbpaste,
+        text_writer=_pbcopy,
+    )
+
+
+def restore_clipboard_text(
+    workspace_ctx: WorkspaceContext,
+    tokenized_text: str,
+) -> ClipboardRestoreResult:
+    """Restore caller-provided clipboard text without touching the system clipboard."""
+    return _restore_text(
+        workspace_ctx,
+        text_reader=lambda: tokenized_text,
+        text_writer=None,
+    )
+
+
+def _restore_text(
+    workspace_ctx: WorkspaceContext,
+    *,
+    text_reader: Callable[[], str],
+    text_writer: Callable[[str], None] | None,
+) -> ClipboardRestoreResult:
     started = perf_counter()
     workspace_ctx.ensure_not_expired()
     with workspace_ctx.operation_lock():
-        tokenized_text = _pbpaste()
+        tokenized_text = text_reader()
         if not tokenized_text.strip():
             raise CloakroomError("Clipboard is empty.")
 
@@ -225,7 +318,8 @@ def restore_clipboard(workspace_ctx: WorkspaceContext) -> ClipboardRestoreResult
         if remaining:
             raise IncompleteRestorationError(sorted(set(remaining)))
 
-        _pbcopy(restored)
+        if text_writer is not None:
+            text_writer(restored)
 
         workspace_ctx.vault_data.restore_count += 1
         workspace_ctx.vault_data.last_used = now_iso()
@@ -251,11 +345,13 @@ def restore_clipboard(workspace_ctx: WorkspaceContext) -> ClipboardRestoreResult
             workspace_ctx.persist()
 
         duration_ms = int((perf_counter() - started) * 1000)
+        input_hash = _sha256_text(tokenized_text)
         append_sanitization_report(
             workspace_ctx,
             operation="clipboard_restore",
             file_path=CLIPBOARD_FILE_ID,
             file_ext="clipboard",
+            file_hash=input_hash,
             duration_ms=duration_ms,
             language="auto",
             entity_counts=build_restore_entity_counts(
@@ -271,6 +367,7 @@ def restore_clipboard(workspace_ctx: WorkspaceContext) -> ClipboardRestoreResult
         return ClipboardRestoreResult(
             tokens_restored=len(active_tokens),
             verification_passed=True,
+            restored_text=restored,
         )
 
 

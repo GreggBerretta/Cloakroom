@@ -140,3 +140,44 @@ class TestDetectionEngine:
         assert [len(entities) for entities in results] == [1, 1, 1]
         assert all(entities[0].text == "John Smith" for entities in results)
         assert [entities[0].source_id for entities in results] == ["r1", "r2", "r3"]
+
+    def test_detect_many_reuses_ner_templates_across_calls(self, monkeypatch):
+        class FakeAnalyzer:
+            def __init__(self):
+                self.calls = 0
+
+            def analyze(self, *, text, entities, language):
+                self.calls += 1
+                return [
+                    SimpleNamespace(
+                        entity_type="PERSON",
+                        start=0,
+                        end=10,
+                        score=0.99,
+                    )
+                ]
+
+            def get_supported_entities(self, *, language):
+                return ["PERSON"]
+
+        engine = DetectionEngine(score_threshold=0.5, detection_mode="balanced")
+        analyzer = FakeAnalyzer()
+        monkeypatch.setattr(engine, "_get_analyzer_for_language", lambda _lang: analyzer)
+        monkeypatch.setattr(engine, "_detect_regex_entities", lambda _text, _lang: [])
+
+        first = engine.detect_many(
+            ["John Smith 111"],
+            source_ids=["first"],
+            language="en",
+        )
+        second = engine.detect_many(
+            ["John Smith 222"],
+            source_ids=["second"],
+            language="en",
+        )
+
+        assert analyzer.calls == 1
+        assert first[0][0].text == "John Smith"
+        assert first[0][0].source_id == "first"
+        assert second[0][0].text == "John Smith"
+        assert second[0][0].source_id == "second"

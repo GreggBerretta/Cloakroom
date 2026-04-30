@@ -43,6 +43,7 @@ COMMON_PAYLOAD_OPTIONAL_FIELDS = (
     "force_reanonymize",
     "reason",
     "license_key",
+    "text",
 )
 
 _SCHEMA_DESCRIPTOR = {
@@ -271,7 +272,14 @@ def _validate_common_payload_fields(payload: dict[str, Any]) -> None:
     if force_reanonymize is not None and not isinstance(force_reanonymize, bool):
         raise IPCError("Invalid payload: 'force_reanonymize' must be a boolean")
 
-    for key in ("detection_mode", "hebrew_backend", "pdf_output_format", "reason", "license_key"):
+    for key in (
+        "detection_mode",
+        "hebrew_backend",
+        "pdf_output_format",
+        "reason",
+        "license_key",
+        "text",
+    ):
         value = payload.get(key)
         if value is not None and not isinstance(value, str):
             raise IPCError(f"Invalid payload: '{key}' must be a string")

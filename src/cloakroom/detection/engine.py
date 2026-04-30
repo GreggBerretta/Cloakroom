@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 import hashlib
 import importlib.metadata
@@ -21,6 +22,8 @@ from presidio_analyzer.nlp_engine import (
     TransformersNlpEngine,
 )
 
+from cloakroom.detection.demo_rules import DemoRuleSet
+from cloakroom.detection.entity_types import SUPPORTED_PRESIDIO_ENTITIES
 from cloakroom.detection.regex_prefilter import RegexPreFilter
 from cloakroom.exceptions import DetectionError
 from cloakroom.models import DetectedEntity, EntityType
@@ -61,7 +64,7 @@ HEBREW_ENTITY_MAPPING = {
     "TIME": "DATE_TIME",
     "ID": "US_SSN",
     "NATIONAL_ID": "US_SSN",
-    "TEUDAT_ZEHUT": "US_SSN",
+    "TEUDAT_ZEHUT": "TEUDAT_ZEHUT",
     "CREDIT_CARD": "CREDIT_CARD",
     "CARD": "CREDIT_CARD",
     "IP": "IP_ADDRESS",
@@ -74,11 +77,14 @@ _hebrew_analyzer_cache: dict[str, AnalyzerEngine] = {}
 _hebrew_profile_cache: dict[str, dict[str, str]] = {}
 _HEBREW_SCRIPT_RE = re.compile(r"[\u0590-\u05FF]")
 
-_TARGET_PRESIDIO_ENTITIES = tuple(
-    entity_type.value
-    for entity_type in EntityType
-    if entity_type is not EntityType.COLUMN
-)
+_TARGET_PRESIDIO_ENTITIES = tuple(SUPPORTED_PRESIDIO_ENTITIES)
+
+
+def _promote_localized_entity(entity_type: EntityType, value: str) -> EntityType:
+    """Promote generic NER labels to first-class IL/HE types when applicable."""
+    if entity_type is EntityType.PERSON and _HEBREW_SCRIPT_RE.search(value):
+        return EntityType.HE_PERSON
+    return entity_type
 
 
 @dataclass(frozen=True)
@@ -446,6 +452,7 @@ class DetectionEngine:
         hebrew_stanza_model: str | None = None,
         hebrew_transformer_model: str | None = None,
         detection_mode: str = "balanced",
+        demo_ruleset: DemoRuleSet | None = None,
     ):
         self._score_threshold = score_threshold
         self._default_language = _normalize_language(default_language)
@@ -472,12 +479,18 @@ class DetectionEngine:
         ).strip()
         self._profile = _resolve_detection_profile(detection_mode)
         self._regex_prefilter = RegexPreFilter()
+        self._demo_ruleset = demo_ruleset
         self._model_hash: str | None = None
         self._resolved_hebrew_backend: str | None = None
         self._supported_entities_cache: dict[str, list[str]] = {}
         self._cell_detection_cache: dict[tuple[str, str], tuple[DetectedEntity, ...]] = {}
         self._cell_cache_max_entries = 5000
         self._cell_cache_max_text_len = 256
+        self._ner_template_cache: dict[
+            tuple[str, tuple[str, ...], str],
+            tuple[_NerTemplate, ...],
+        ] = {}
+        self._ner_template_cache_max_entries = 5000
 
     @property
     def model_lock_key(self) -> str:
@@ -519,21 +532,28 @@ class DetectionEngine:
         Returns entities sorted by start position (ascending).
         Filters results below the score threshold.
         Resolves overlapping detections by keeping the higher-scored one.
+
+        Source order (highest precedence first):
+        1. Demo-rule dictionary/regex matches (deterministic).
+        2. Regex prefilter matches (deterministic).
+        3. Presidio NER matches (probabilistic).
         """
         if not text or not text.strip():
             return []
 
         resolved_language = self.resolve_language(text, language)
+        demo_entities = self._detect_demo_entities(text)
         regex_entities = self._detect_regex_entities(text, resolved_language)
+        deterministic = self._merge_entities(demo_entities, regex_entities)
         if self._profile.regex_only:
-            return regex_entities
+            return deterministic
 
-        masked_text = self._mask_spans(text, regex_entities)
+        masked_text = self._mask_spans(text, deterministic)
         if not self._should_run_ner(masked_text):
-            return regex_entities
+            return deterministic
 
         ner_entities = self._detect_ner_entities(masked_text, text, resolved_language)
-        merged = self._merge_entities(regex_entities, ner_entities)
+        merged = self._merge_entities(deterministic, ner_entities)
         return merged
 
     def detect_in_cell(
@@ -623,6 +643,15 @@ class DetectionEngine:
         entities = self._regex_prefilter.extract_entities(text, language=language)
         return [entity for entity in entities if entity.score >= self._score_threshold]
 
+    def _detect_demo_entities(self, text: str) -> list[DetectedEntity]:
+        if self._demo_ruleset is None:
+            return []
+        return [
+            entity
+            for entity in self._demo_ruleset.detect(text)
+            if entity.score >= self._score_threshold
+        ]
+
     def _detect_ner_entities(
         self,
         masked_text: str,
@@ -648,10 +677,12 @@ class DetectionEngine:
             entity_type = EntityType.from_presidio(result.entity_type)
             if entity_type is None:
                 continue
+            value = original_text[result.start : result.end]
+            entity_type = _promote_localized_entity(entity_type, value)
             detected.append(
                 DetectedEntity(
                     entity_type=entity_type,
-                    text=original_text[result.start : result.end],
+                    text=value,
                     start=result.start,
                     end=result.end,
                     score=result.score,
@@ -708,40 +739,38 @@ class DetectionEngine:
         analyzer = self._get_analyzer_for_language(language)
         entities_to_analyze = self._target_entities_for_language(analyzer, language)
 
-        regex_entities_by_idx: list[list[DetectedEntity]] = []
+        deterministic_by_idx: list[list[DetectedEntity]] = []
         masked_text_by_idx: list[str] = []
         run_ner_by_idx: list[bool] = []
 
         for text in texts:
+            demo_entities = self._detect_demo_entities(text)
             regex_entities = self._detect_regex_entities(text, language)
-            regex_entities_by_idx.append(regex_entities)
+            deterministic = self._merge_entities(demo_entities, regex_entities)
+            deterministic_by_idx.append(deterministic)
 
             if self._profile.regex_only:
                 masked_text_by_idx.append("")
                 run_ner_by_idx.append(False)
                 continue
 
-            masked_text = self._mask_spans(text, regex_entities)
+            masked_text = self._mask_spans(text, deterministic)
             masked_text_by_idx.append(masked_text)
             run_ner_by_idx.append(self._should_run_ner(masked_text))
 
-        ner_templates_cache: dict[str, list[_NerTemplate]] = {}
         ner_entities_by_idx: list[list[DetectedEntity]] = [[] for _ in texts]
         for idx, text in enumerate(texts):
             if not run_ner_by_idx[idx]:
                 continue
 
             masked_text = masked_text_by_idx[idx]
-            cache_key = self._canonicalize_ner_text(masked_text)
-            templates = ner_templates_cache.get(cache_key)
-            if templates is None:
-                templates = self._analyze_ner_templates(
-                    analyzer=analyzer,
-                    text=cache_key,
-                    language=language,
-                    entities_to_analyze=entities_to_analyze,
-                )
-                ner_templates_cache[cache_key] = templates
+            canonical_text = self._canonicalize_ner_text(masked_text)
+            templates = self._get_or_analyze_ner_templates(
+                analyzer=analyzer,
+                text=canonical_text,
+                language=language,
+                entities_to_analyze=entities_to_analyze,
+            )
 
             ner_entities_by_idx[idx] = self._materialize_ner_entities(
                 templates,
@@ -750,7 +779,7 @@ class DetectionEngine:
 
         results: list[list[DetectedEntity]] = []
         for idx in range(len(texts)):
-            merged = self._merge_entities(regex_entities_by_idx[idx], ner_entities_by_idx[idx])
+            merged = self._merge_entities(deterministic_by_idx[idx], ner_entities_by_idx[idx])
             results.append(
                 [
                     DetectedEntity(
@@ -765,6 +794,32 @@ class DetectionEngine:
                 ]
             )
         return results
+
+    def _get_or_analyze_ner_templates(
+        self,
+        *,
+        analyzer: AnalyzerEngine,
+        text: str,
+        language: str,
+        entities_to_analyze: list[str],
+    ) -> tuple[_NerTemplate, ...]:
+        cache_key = (language, tuple(entities_to_analyze), text)
+        cached = self._ner_template_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        templates = tuple(
+            self._analyze_ner_templates(
+                analyzer=analyzer,
+                text=text,
+                language=language,
+                entities_to_analyze=entities_to_analyze,
+            )
+        )
+        self._ner_template_cache[cache_key] = templates
+        if len(self._ner_template_cache) > self._ner_template_cache_max_entries:
+            self._ner_template_cache.pop(next(iter(self._ner_template_cache)))
+        return templates
 
     def _analyze_ner_templates(
         self,
@@ -811,7 +866,7 @@ class DetectionEngine:
 
     def _materialize_ner_entities(
         self,
-        templates: list[_NerTemplate],
+        templates: Sequence[_NerTemplate],
         *,
         original_text: str,
     ) -> list[DetectedEntity]:
@@ -822,10 +877,12 @@ class DetectionEngine:
                 continue
             if template.start >= template.end:
                 continue
+            value = original_text[template.start : template.end]
+            entity_type = _promote_localized_entity(template.entity_type, value)
             entities.append(
                 DetectedEntity(
-                    entity_type=template.entity_type,
-                    text=original_text[template.start : template.end],
+                    entity_type=entity_type,
+                    text=value,
                     start=template.start,
                     end=template.end,
                     score=template.score,

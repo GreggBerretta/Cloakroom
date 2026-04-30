@@ -267,7 +267,7 @@ Partial:
 
 ### P2 - Commercial/Legal Readiness
 
-- Complete model-weight/license review for spaCy, Presidio, Hebrew models, Stanza, Transformers, PyMuPDF, Gradio, Textual, and Swift dependencies.
+- Complete model-weight/license review for spaCy, Presidio, Hebrew models, Stanza, Transformers, pdfplumber, reportlab, Gradio, Textual, and Swift dependencies. PyMuPDF was removed in favor of pdfplumber (MIT) + reportlab (BSD) to avoid the AGPL/commercial licensing decision.
 - Decide on offline vs online license entitlement.
 - Create a beta support runbook with recovery-key, vault purge/recover, audit export, and escalation procedures.
 

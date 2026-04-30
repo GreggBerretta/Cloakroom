@@ -8,6 +8,7 @@ import logging as py_logging
 from pathlib import Path
 from time import perf_counter
 
+from cloakroom.detection.demo_rules import DemoRuleSet
 from cloakroom.detection.engine import DetectionEngine
 from cloakroom.exceptions import (
     ColumnSelectionError,
@@ -73,6 +74,7 @@ class AnonymizePipeline:
         pdf_output_format: str = "md",
         selected_columns: list[str] | None = None,
         detect_pii: bool | None = None,
+        demo_ruleset: DemoRuleSet | None = None,
     ):
         self._ctx = workspace_ctx
         self._clock = clock or SystemClock()
@@ -82,6 +84,7 @@ class AnonymizePipeline:
             hebrew_backend=hebrew_backend,
             hebrew_stanza_model=hebrew_stanza_model,
             hebrew_transformer_model=hebrew_transformer_model,
+            demo_ruleset=demo_ruleset,
         )
         self._language = language
         self._force_reanonymize = force_reanonymize
@@ -275,6 +278,7 @@ class AnonymizePipeline:
                     event="file_anonymized",
                     fields={
                         "file_path": str(input_path),
+                        "file_hash": file_record.file_hash_before,
                         "file_ext": suffix,
                         "entity_count": file_record.entities_found,
                         "duration_ms": duration_ms,
@@ -288,6 +292,7 @@ class AnonymizePipeline:
                             "override_type": "force_reanonymize",
                             "reason": self._override_reason,
                             "file_path": str(input_path),
+                            "file_hash": file_record.file_hash_before,
                         },
                     )
 
@@ -297,6 +302,7 @@ class AnonymizePipeline:
                         operation="anonymize",
                         file_path=str(input_path),
                         file_ext=suffix,
+                        file_hash=file_record.file_hash_before,
                         duration_ms=duration_ms,
                         language=self._language,
                         entity_counts=build_anonymize_entity_counts(

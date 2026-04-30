@@ -6,10 +6,27 @@ import re
 
 from cloakroom.models import EntityType
 
-# Presidio entity type strings we actively detect.
-# COLUMN is internal-only and must never be requested from Presidio.
+# Cloakroom-specific types that are never requested from Presidio. They are
+# produced by the regex prefilter, the demo-rule pre-pass, or post-detection
+# promotion (e.g. HE_PERSON for Hebrew-script PERSON results).
+_CLOAKROOM_ONLY_TYPES = {
+    EntityType.COLUMN,
+    EntityType.HE_PERSON,
+    EntityType.TEUDAT_ZEHUT,
+    EntityType.IL_PHONE,
+    EntityType.IL_ADDRESS,
+    EntityType.IL_BANK_ACCOUNT,
+    EntityType.PROJECT,
+    EntityType.CONTRACT_VALUE,
+    EntityType.PRICING_TERM,
+    EntityType.STRATEGY,
+    EntityType.ADDRESS_LINE,
+    EntityType.CUSTOMER_ID,
+}
+
+# Presidio entity type strings we actively detect via NER.
 SUPPORTED_PRESIDIO_ENTITIES: list[str] = [
-    member.value for member in EntityType if member != EntityType.COLUMN
+    member.value for member in EntityType if member not in _CLOAKROOM_ONLY_TYPES
 ]
 
 

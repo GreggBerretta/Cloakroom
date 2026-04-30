@@ -188,7 +188,7 @@ PDF behavior:
 If PDF anonymize fails with `PdfExtractionError`:
 ```bash
 # Ensure fallback backend exists
-uv run python -c "import fitz; print('PyMuPDF OK')"
+uv run python -c "import pdfplumber; print('pdfplumber OK')"
 
 # Optional: install Docling for higher fidelity extraction
 uv sync --extra pdf_docling

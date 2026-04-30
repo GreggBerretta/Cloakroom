@@ -6,6 +6,11 @@ import pytest
 
 from cloakroom.exceptions import ColumnSelectionError, UnsupportedFormatError
 from cloakroom.extractors.pdf_markdown import PDFExtractionResult
+from cloakroom.governance.reporting import (
+    read_sanitization_reports,
+    report_log_path_for_workspace_dir,
+)
+from cloakroom.logging.audit import audit_log_path_for_workspace_dir
 from cloakroom.models import VaultData, now_iso
 from cloakroom.handlers import pdf_handler
 from cloakroom.pipeline.anonymize import AnonymizePipeline
@@ -89,6 +94,41 @@ class TestAnonymizePipeline:
         assert result.output_path.name == "notes.anonymized.md"
         assert result.output_path.exists()
         assert "[PERSON_" in result.output_path.read_text(encoding="utf-8")
+
+    def test_anonymize_report_and_audit_do_not_leak_pii_filename(
+        self,
+        workspace_ctx,
+        tmp_path,
+    ):
+        pipeline = AnonymizePipeline(workspace_ctx, score_threshold=0.5)
+        input_path = tmp_path / (
+            "Jane Smith john.smith@acme.com 123-45-6789 Project Lantern.md"
+        )
+        input_path.write_text(
+            "# Escalation\n\nJohn Smith can be reached at john@example.com",
+            encoding="utf-8",
+        )
+
+        pipeline.run(input_path, tmp_path / "safe.md")
+
+        report_text = report_log_path_for_workspace_dir(
+            workspace_ctx.vault.path.parent
+        ).read_text(encoding="utf-8")
+        audit_text = audit_log_path_for_workspace_dir(
+            workspace_ctx.vault.path.parent
+        ).read_text(encoding="utf-8")
+        for payload in (report_text, audit_text):
+            assert str(input_path) not in payload
+            assert "Jane Smith" not in payload
+            assert "john.smith@acme.com" not in payload
+            assert "123-45-6789" not in payload
+            assert "Project Lantern" not in payload
+
+        file_record = workspace_ctx.vault_data.file_records[-1]
+        row = read_sanitization_reports(workspace_ctx)[-1]
+        assert row["file_hash"] == file_record.file_hash_before
+        assert row["chain_verified"] is True
+        assert "file_path" not in row
 
     def test_unsupported_format(self, workspace_ctx, tmp_path):
         pipeline = AnonymizePipeline(workspace_ctx)

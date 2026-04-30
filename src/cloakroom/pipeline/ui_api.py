@@ -57,7 +57,7 @@ def sanitize_ui_error(exc: Exception) -> tuple[str, str]:
     if isinstance(exc, ColumnSelectionError):
         return code, str(exc)
     if isinstance(exc, PdfExtractionError):
-        return code, "PDF extraction failed. Install Docling or PyMuPDF and retry."
+        return code, "PDF extraction failed. Install Docling or pdfplumber and retry."
     if isinstance(exc, PdfInputOnlyError):
         return (
             code,

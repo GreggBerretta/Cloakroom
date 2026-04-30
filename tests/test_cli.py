@@ -30,6 +30,7 @@ class TestCli:
         result = runner.invoke(main, ["--help"])
         assert result.exit_code == 0
         assert "anonymize" in result.output
+        assert "demo" in result.output
         assert "inspect-columns" in result.output
         assert "ipc-server" in result.output
         assert "ipc-stdio" in result.output
@@ -102,6 +103,19 @@ class TestCli:
     def test_ipc_stdio_help(self, runner):
         result = runner.invoke(main, ["ipc-stdio", "--help"])
         assert result.exit_code == 0
+
+    def test_demo_help(self, runner):
+        result = runner.invoke(main, ["demo", "--help"])
+        assert result.exit_code == 0
+        assert "--host" in result.output
+        assert "--port" in result.output
+        assert "--no-open-browser" in result.output
+
+    def test_demo_rejects_non_loopback_without_onboarding_warning(self, runner):
+        result = runner.invoke(main, ["demo", "--host", "0.0.0.0", "--no-open-browser"])
+        assert result.exit_code == 1
+        assert "must bind to 127.0.0.1" in result.output
+        assert "First-run onboarding" not in result.output
 
     def test_inspect_columns(self, runner):
         result = runner.invoke(main, ["inspect-columns", str(FIXTURES_DIR / "sample_data.csv")])

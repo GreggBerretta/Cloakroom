@@ -7,7 +7,9 @@ from pathlib import Path
 import pytest
 
 from cloakroom import licensing
+from cloakroom.clipboard.operations import ClipboardRestoreResult, ClipboardShieldResult
 from cloakroom.ipc.protocol import PROTOCOL_VERSION
+from cloakroom.ipc import server as ipc_server
 from cloakroom.ipc.server import IPCServer
 from cloakroom.models import VaultData, now_iso
 from cloakroom.tokenizer.generator import TokenGenerator
@@ -184,6 +186,67 @@ class TestIPCServer:
         )
         assert limited["status"] == "VALIDATION_ERROR"
         assert limited["error_code"] == "LicenseLimitExceededError"
+
+    def test_text_anonymize_returns_transformed_text(self, tmp_path, monkeypatch: pytest.MonkeyPatch):
+        def fake_shield(ctx, text, **kwargs):
+            assert ctx.workspace_name == "default"
+            assert text == "John Smith"
+            assert kwargs["override_user"] == "swift-wrapper"
+            return ClipboardShieldResult(
+                entities_found=1,
+                tokens_applied=1,
+                model_hash="model-a",
+                anonymized_text="[PERSON_00001]",
+            )
+
+        monkeypatch.setattr(ipc_server, "shield_clipboard_text", fake_shield)
+        manager = _fake_manager(tmp_path)
+        ctx = manager.get_active_workspace("default")
+        server = IPCServer(tmp_path / "engine.sock", manager=manager)
+
+        response = server.handle_request_dict(
+            _request(
+                "TEXT_ANONYMIZE",
+                workspace_version=ctx.vault_data.updated_at,
+                payload={"text": "John Smith"},
+            )
+        )
+
+        assert response["status"] == "SUCCESS"
+        assert response["payload"]["text"] == "[PERSON_00001]"
+        assert response["payload"]["entities_found"] == 1
+        assert response["payload"]["license"]["tier"] == "FREE"
+
+    def test_text_restore_returns_transformed_text(self, tmp_path, monkeypatch: pytest.MonkeyPatch):
+        usage_path = tmp_path / "license_usage.json"
+        monkeypatch.setattr(licensing, "LICENSE_USAGE_PATH", usage_path)
+
+        def fake_restore(ctx, text):
+            assert ctx.workspace_name == "default"
+            assert text == "[PERSON_00001]"
+            return ClipboardRestoreResult(
+                tokens_restored=1,
+                verification_passed=True,
+                restored_text="John Smith",
+            )
+
+        monkeypatch.setattr(ipc_server, "restore_clipboard_text", fake_restore)
+        manager = _fake_manager(tmp_path)
+        ctx = manager.get_active_workspace("default")
+        server = IPCServer(tmp_path / "engine.sock", manager=manager)
+
+        response = server.handle_request_dict(
+            _request(
+                "TEXT_RESTORE",
+                workspace_version=ctx.vault_data.updated_at,
+                payload={"text": "[PERSON_00001]"},
+            )
+        )
+
+        assert response["status"] == "SUCCESS"
+        assert response["payload"]["text"] == "John Smith"
+        assert response["payload"]["verification_passed"] is True
+        assert response["payload"]["license"]["free_daily_restores_used"] == 1
 
 
 def _workspace_context(tmp_path: Path) -> WorkspaceContext:
