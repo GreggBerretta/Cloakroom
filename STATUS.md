@@ -16,12 +16,12 @@ This document is the operational state of the Cloakroom codebase. The Master PRD
 |---|---|
 | Canonical tree | `/Users/greggberretta/Documents/New project/Cloakroom` |
 | GitHub default branch | `main` (changed 2026-04-29 from `codex/handoff-b-status-doc`) |
-| Active feature branch | `feature/demo-rules-and-il-entities` (draft PR [#1](https://github.com/GreggBerretta/Cloakroom/pull/1) open; **2 unpushed commits** on top of last hosted CI: dependency swap + teammate setup guide) |
+| Active feature branch | `feature/demo-rules-and-il-entities` (draft PR [#1](https://github.com/GreggBerretta/Cloakroom/pull/1) open; includes dependency swap, teammate setup guide, CI filter cleanup, attestation safety redesign, and Swift wrapper false-success fixes) |
 | Stale local branches | `codex/handoff-b-status-doc`, `feature/rename-to-cloakroom` (kept as historical refs; deletable) |
 | Stale remote branches | `codex/handoff-b-status-doc`, `codex/handoff-b-status-doc-clean` (consider deleting after Phase 1 PR merges) |
-| Working tree | Clean after latest dependency-swap commit |
-| Engine tests | **329 passing** on the active branch (was 324; +5 from PyMuPDF→pdfplumber/reportlab swap) |
-| Swift build | Pass on 2026-04-29 during Phase 1 closeout; not re-run after the dependency swap (no Swift code touched) |
+| Working tree | Clean after latest wrapper-safety/attestation cleanup commit |
+| Engine tests | **333 passing** on the active branch (was 329; +4 from PR closeout safety cleanup) |
+| Swift build | Pass on 2026-04-30 after Swift wrapper false-success fixes |
 
 ### Functional commits ahead of main on the active branch
 
@@ -30,14 +30,17 @@ This document is the operational state of the Cloakroom codebase. The Master PRD
 08d55f6  feat(detection): demo rules engine + first-class IL/HE entity taxonomy
 ```
 
-These functional commits, the NER template-cache performance fix, Phase 2 audit/report safety hardening, Phase 3 demo backend work, Phase 4 demo UI work, Phase 5 browser acceptance gate, Phase 6 launcher/runbook work, and status-documentation commits are on draft PR [#1](https://github.com/GreggBerretta/Cloakroom/pull/1).
+These functional commits, the NER template-cache performance fix, Phase 2 audit/report safety hardening, Phase 3 demo backend work, Phase 4 demo UI work, Phase 5 browser acceptance gate, Phase 6 launcher/runbook work, dependency hardening, and PR closeout safety cleanup are on draft PR [#1](https://github.com/GreggBerretta/Cloakroom/pull/1).
 
-Two additional commits land after the last hosted CI run; they are local-only at this moment and need to be pushed before re-validation:
+Additional post-Phase-6 commits now included in PR [#1](https://github.com/GreggBerretta/Cloakroom/pull/1):
 
 ```
+7c016d2  docs(status): record dependency swap, IT review findings, and revised what's-next
 d82dbd9  deps: replace PyMuPDF with pdfplumber + reportlab
 53478cc  docs: add teammate setup guide for the killer demo
 ```
+
+Post-Phase-6 closeout work also includes the CI workflow filter cleanup, `AttestationRecord` safe identity redesign, and Swift wrapper false-success fixes documented below.
 
 ---
 
@@ -256,6 +259,24 @@ Commit `d82dbd9` on `feature/demo-rules-and-il-entities`. Driven by IT review: P
 
 Commit `53478cc`. Added [docs/Demo_Setup_Guide.md](docs/Demo_Setup_Guide.md) — step-by-step instructions for a teammate getting the demo running on a fresh Mac for the first time. Complements the presenter-focused [Cloakroom_Demo_Runbook.md](docs/Cloakroom_Demo_Runbook.md) with a setup-and-launch path that assumes no existing checkout.
 
+### PR closeout safety cleanup — CI filters, attestation, Swift wrapper (DONE locally, 2026-04-30)
+
+This closeout batch addresses the highest-leverage items IT called out before merging PR [#1](https://github.com/GreggBerretta/Cloakroom/pull/1):
+
+- **GitHub workflow filters** ([.github/workflows/ci.yml](.github/workflows/ci.yml), [.github/workflows/security-scan.yml](.github/workflows/security-scan.yml), [.github/workflows/performance-gate.yml](.github/workflows/performance-gate.yml)) — removed stale `codex/**` push triggers; workflows now run on `main` pushes and pull requests.
+- **Attestation model safety** ([src/cloakroom/models.py](src/cloakroom/models.py)) — `AttestationRecord` now persists `{file_hash, file_label_safe}` instead of raw `file_path`; legacy deserialization normalizes old `file_path` records through the existing safe file-reference helper.
+- **Clipboard text IPC lane** ([src/cloakroom/ipc/server.py](src/cloakroom/ipc/server.py), [src/cloakroom/clipboard/operations.py](src/cloakroom/clipboard/operations.py)) — added `TEXT_ANONYMIZE` and `TEXT_RESTORE` request types so native wrappers can pass buffered clipboard text to the engine without letting Python read/write the system clipboard directly.
+- **Swift ClipboardGuard wiring** ([wrapper/CloakroomWrapper/Sources/CloakroomMenuBar/main.swift](wrapper/CloakroomWrapper/Sources/CloakroomMenuBar/main.swift)) — menu-bar Shield/Restore now clear the clipboard through `ClipboardGuard`, call the local text IPC transform, write the final value through `NSPasteboard`, and only display success after the pasteboard `changeCount` proves the write occurred.
+- **Swift wake checks** ([wrapper/CloakroomWrapper/Sources/CloakroomMenuBar/main.swift](wrapper/CloakroomWrapper/Sources/CloakroomMenuBar/main.swift)) — wake handling now probes `HEARTBEAT` and `STATS_QUERY` instead of passing hardcoded `true` values into `handleSystemWake`.
+- **Wrapper validation parity** ([wrapper/CloakroomWrapper/Sources/CloakroomWrapper/WrapperController.swift](wrapper/CloakroomWrapper/Sources/CloakroomWrapper/WrapperController.swift)) — expected validation error codes now include restore/replay/model/hash/lossy-XLSX failures the Python IPC server already classifies as `VALIDATION_ERROR`.
+
+**Coverage added**:
+- [tests/test_models.py](tests/test_models.py) — `AttestationRecord` round trip asserts `file_path` is absent; legacy `file_path` records normalize without leaking PII-bearing filename text.
+- [tests/test_clipboard/test_operations.py](tests/test_clipboard/test_operations.py) — text transform round trip proves the new API updates vault state without touching the system clipboard.
+- [tests/test_ipc/test_server.py](tests/test_ipc/test_server.py) — `TEXT_ANONYMIZE` and `TEXT_RESTORE` dispatch tests cover transformed payloads and free-tier restore accounting.
+
+**Verification**: `uv run pytest -q` -> 333 passed; `uv run ruff check ...` -> pass; `swift build --package-path wrapper/CloakroomWrapper` -> pass; `swift run --package-path wrapper/CloakroomWrapper wrapper-invariant-checks` -> pass.
+
 ### Already-built capabilities preserved from the prior 2026-02-24 status
 
 These were validated before Phase 0/1 work and remain green; Phase 1 did not touch them:
@@ -272,7 +293,7 @@ These were validated before Phase 0/1 work and remain green; Phase 1 did not tou
 - Workspace governance commands: `close`, `recover`, `purge`, `set-governance --self-destruct-on-restore`, `report show`, Pro-gated `report export --format json|pdf`.
 - Free TTL fixed at 24h, Pro TTL cap at 30 days, Pro gating for column-selective mode, advanced Hebrew backends, long TTL, and report export.
 - File support: `.txt`, `.md`, `.csv` (with dialect preservation), `.xlsx` (formula preservation + lossy chart/image gate), `.docx` (run redistribution), `.pdf` (input-only).
-- Native Mac menu-bar Swift target (`cloakroom-menubar`) — scaffold-grade only.
+- Native Mac menu-bar Swift target (`cloakroom-menubar`) — partially hardened for clipboard and wake false-success paths; signed app packaging, onboarding, updater, real heartbeat timer, and wrapper integration tests remain Master-PRD product work.
 - Performance gate workflow + benchmark CLI.
 
 ---
@@ -283,7 +304,7 @@ These were validated before Phase 0/1 work and remain green; Phase 1 did not tou
 
 | Suite | Pre-Phase-1 | Now |
 |---|---|---|
-| Total Python tests | 297 | **329** |
+| Total Python tests | 297 | **333** |
 | Phase-1 additions | — | 13 (7 demo-rule unit, 5 demo end-to-end, 1 NER template-cache regression) |
 | Phase-2 additions | — | 4 new tests plus 1 strengthened report export test (report path safety, report hash chain, audit path safety, pipeline no-leak integration) |
 | Phase-3 additions | — | 5 demo-server HTTP tests |
@@ -291,6 +312,7 @@ These were validated before Phase 0/1 work and remain green; Phase 1 did not tou
 | Phase-5 additions | — | Browser acceptance gate script + GitHub workflow |
 | Phase-6 additions | — | 3 Python tests for demo launcher/URL guardrails |
 | PyMuPDF→pdfplumber/reportlab swap | — | 5 (3 pdfplumber backend, 2 PDF export magic-bytes) |
+| PR closeout safety cleanup | — | 4 (AttestationRecord safe identity, text clipboard transform, text IPC dispatch) |
 
 Run command: `uv run pytest -q` (canonical tree).
 
@@ -365,7 +387,19 @@ Run command: `uv run pytest -q` (canonical tree).
 - `test_export_sanitization_reports_pdf_writes_valid_pdf` — populated report exports as a real PDF (`%PDF-` magic, non-trivial size).
 - `test_export_sanitization_reports_pdf_handles_empty_workspace` — empty workspace still produces a valid PDF.
 
-### 3.8 Walkthrough output (current state)
+### 3.8 New tests added in PR closeout safety cleanup
+
+[tests/test_models.py](tests/test_models.py):
+- `test_legacy_file_path_normalizes_to_safe_reference`
+
+[tests/test_clipboard/test_operations.py](tests/test_clipboard/test_operations.py):
+- `test_text_transform_roundtrip_does_not_touch_system_clipboard`
+
+[tests/test_ipc/test_server.py](tests/test_ipc/test_server.py):
+- `test_text_anonymize_returns_transformed_text`
+- `test_text_restore_returns_transformed_text`
+
+### 3.9 Walkthrough output (current state)
 
 `uv run python scripts/demo_walkthrough.py` produces:
 
@@ -378,7 +412,7 @@ The team wants AI help summarizing the [STRATEGY_00001] and [STRATEGY_00002] bef
 
 11 sensitive items shielded, 0 leaked, byte-identical round trip.
 
-### 3.9 Browser/UI verification (Phase 4/5 local)
+### 3.10 Browser/UI verification (Phase 4/5 local)
 
 Browser verification used installed Chrome headless/CDP fallback because Browser/IAB was not available in this session and Computer Use permissions were pending.
 
@@ -391,7 +425,7 @@ Browser verification used installed Chrome headless/CDP fallback because Browser
 - Phase 5 hardened acceptance screenshots were written to `/tmp/cloakroom_phase5_acceptance_after_fix/`.
 - Phase 5 model-workflow acceptance screenshots were written to `/tmp/cloakroom_phase5_acceptance_after_model_fix/`.
 
-### 3.10 GitHub-hosted closeout validation
+### 3.11 GitHub-hosted closeout validation
 
 - **GitHub CI** — draft PR [#1](https://github.com/GreggBerretta/Cloakroom/pull/1) is open. Hosted `ci.yml`, `security-scan.yml`, and `ec15-gate.yml` passed on 2026-04-29 after the Phase 1 branch was pushed.
 - **GitHub performance gate** — manually dispatched `performance-gate.yml` passed on hosted macOS after the NER template-cache fix. Observed hosted run: anonymize 5.82s, restore 0.53s, clipboard 0.49s against the 8.00s / 2.00s / 1.50s gates.
@@ -399,10 +433,12 @@ Browser verification used installed Chrome headless/CDP fallback because Browser
 - **Phase 3 hosted checks** — passed on 2026-04-29 after the demo backend commit was pushed: CI tests, Security Scan dependency audit, EC-15, and manual `performance-gate.yml`.
 - **Phase 4 hosted checks** — passed on 2026-04-29 after the demo UI commit was pushed: CI tests, Security Scan dependency audit, EC-15, and manual `performance-gate.yml`.
 - **Phase 5/6 hosted checks** — passed on 2026-04-30 after the workflow fix: Demo Acceptance passed in 1m0s ([run](https://github.com/GreggBerretta/Cloakroom/actions/runs/25150299365)), CI tests passed in 1m35s, Security Scan dependency audit passed in 22s, and both EC-15 jobs passed (59s / 43s). Historical note: the first hosted Demo Acceptance run on `b94c5cf` timed out waiting for Shield output; the hardened re-run on `763e1c8` identified that the workflow lacked `xx_ent_wiki_sm`, which is now installed.
+- **Dependency-swap hosted checks** — passed on 2026-04-30 after `7c016d2` was pushed: Demo Acceptance passed in 56s ([run](https://github.com/GreggBerretta/Cloakroom/actions/runs/25162106630)), CI tests passed in 43s, Security Scan dependency audit passed in 16s, and both EC-15 jobs passed (34s / 35s). This confirms pdfplumber/reportlab work on GitHub macOS runners.
 - **Local closeout validation** — latest completed on 2026-04-30:
-  - `uv run pytest -q` -> 329 passed, 1 warning
+  - `uv run pytest -q` -> 333 passed, 1 warning
   - `swift build --package-path wrapper/CloakroomWrapper` -> pass
   - `swift run --package-path wrapper/CloakroomWrapper wrapper-invariant-checks` -> pass
+  - `uv run ruff check src/cloakroom/clipboard src/cloakroom/ipc src/cloakroom/licensing.py src/cloakroom/models.py tests/test_clipboard/test_operations.py tests/test_ipc/test_server.py tests/test_models.py` -> pass
   - `uv run python scripts/demo_walkthrough.py` -> pass
   - `uv run --with pip-audit pip-audit --local` -> no known vulnerabilities found
   - `uv run cloakroom benchmark-performance --rows 10000 --language en --enforce-gates --output /tmp/cloakroom_phase6_performance_gate.json` -> Gate PASS (anonymize 1.67s, restore 0.21s, clipboard 0.22s)
@@ -424,7 +460,7 @@ Browser verification used installed Chrome headless/CDP fallback because Browser
 
 | Gate | State |
 |---|---|
-| Engine correctness (329 tests) | Pass |
+| Engine correctness (333 tests) | Pass |
 | Demo-rule unit tests (7) | Pass |
 | End-to-end killer-demo flow on EN sample | Pass |
 | Strict PRD §6 token-layout assertion | Pass |
@@ -449,6 +485,7 @@ Browser verification used installed Chrome headless/CDP fallback because Browser
 | Phase 5 hosted browser acceptance gate | Pass: GitHub Demo Acceptance, 1m0s on 2026-04-30 |
 | Phase 6 demo launcher smoke | Pass locally: `uv run cloakroom demo --no-open-browser` health check |
 | Phase 5/6 hosted PR checks | Pass: CI tests, Security Scan dependency audit, EC-15, Demo Acceptance |
+| PR closeout safety cleanup | Pass: AttestationRecord safe identity, text clipboard transform, text IPC dispatch, Swift wrapper build/invariants |
 
 ### 4.2 Failing
 
@@ -559,10 +596,8 @@ Delta vs. pre-optimization: English anonymize 48.95 s → 1.96 s (~96% faster); 
 
 | Item | Why | Phase |
 |---|---|---|
-| **Push the 2 unpushed commits** (`d82dbd9` dependency swap, `53478cc` setup guide) | Hosted CI has not run on the dependency swap yet; can't merge until it does | Closeout |
-| **Re-validate hosted CI on the tip commit** | Confirm pdfplumber/reportlab work on macOS-latest, not just locally | Closeout |
-| Human-review and merge draft PR [#1](https://github.com/GreggBerretta/Cloakroom/pull/1) once tip-commit CI is green | Branch ready end-to-end through Phase 6 + dependency swap | Phase 1/2/3/4/5/6 closeout |
-| Land the deferred CI filter cleanup (drop `codex/**`, leave `main` + `pull_request`) | OAuth `workflow` scope refreshed on 2026-04-30; should land on PR #1 before merge | Phase 0 leftover |
+| Re-check hosted PR [#1](https://github.com/GreggBerretta/Cloakroom/pull/1) checks on the final closeout tip | Local tests are green, but merge should wait for GitHub Actions on the exact pushed commit | Phase 1/2/3/4/5/6 closeout |
+| Human-review and merge draft PR [#1](https://github.com/GreggBerretta/Cloakroom/pull/1) once final tip checks are green | Branch is ready end-to-end through Phase 6 + dependency swap + cleanup | Phase 1/2/3/4/5/6 closeout |
 
 ### 6.2 Demo build-out (per the execution plan)
 
@@ -581,13 +616,13 @@ Total remaining for a presentable buyer demo after Phase 6: **~2–4 focused eng
 
 Tracked but not blocking the buyer demo:
 
-- Swift menu-bar packaging (signed `.app`, real heartbeat, `ClipboardGuard` wired into the production menu flow, real wake/health checks). Currently scaffold-grade. **IT review revised the effort estimate to 3–5 engineering weeks** (was 2–3) once notarization, polished onboarding, Sparkle/MDM updater, and stdio+AF_UNIX wrapper integration tests are included.
+- Swift menu-bar packaging (signed `.app`, real heartbeat timer, first-run onboarding, updater, recovery UX, and stdio+AF_UNIX wrapper integration tests). ClipboardGuard is now wired into the menu flow and wake checks now probe the engine/vault instead of hardcoded success, but the native app is still not the signed production surface. **IT review revised the effort estimate to 3–5 engineering weeks** (was 2–3) once notarization, polished onboarding, Sparkle/MDM updater, and stdio+AF_UNIX wrapper integration tests are included.
 - Crash atomicity / staged-output reconciliation.
 - Real LLM mutation harness against representative corpora. **IT review reframed**: the release gate is the fail-closed invariant (zero incorrect restores, calm recovery UX), not third-party LLM token-retention rates. Real LLM runs are evidence/monitoring, not a release lock. Master Release-Gates doc needs this language.
 - License/entitlement system upgrade (currently regex/env-var based). IT priority order: signed offline license file for pilots first, online/hybrid later.
 - Third-party model/license review (spaCy, Presidio, Hebrew models, Stanza, Transformers, pdfplumber, reportlab, Gradio, Textual, Swift deps). **PyMuPDF was removed 2026-04-30** in favor of pdfplumber (MIT) + reportlab (BSD) to eliminate the AGPL/commercial licensing decision; that part of the legal review is now closed.
-- `AttestationRecord` redesign (drop `file_path`, replace with `{file_hash, file_label_safe}`) **must land before** any attestation workflow code is written on top of it. Otherwise the Phase 2 audit-safety property is reintroduced as a leak. Reference: [src/cloakroom/models.py:337](src/cloakroom/models.py).
-- Two small Swift wrapper hardcoded-value fixes that don't depend on the larger native-app refactor: [main.swift:251](CoWorkShieldMenuBar/Sources/main.swift) (wake-check hardcoded `true`) and [main.swift:267](CoWorkShieldMenuBar/Sources/main.swift) (`clipboardVerified: true` passed directly, bypassing `ClipboardGuard`). 2–3 days of focused Swift work.
+- Attestation workflow UX is still not built. The data model pre-work is complete: `AttestationRecord` now stores `{file_hash, file_label_safe}` instead of raw `file_path` ([src/cloakroom/models.py:337](src/cloakroom/models.py)).
+- The two small Swift wrapper hardcoded-value fixes are complete locally: wake checks now call `HEARTBEAT` + `STATS_QUERY`, and menu-bar clipboard Shield/Restore now use `ClipboardGuard` + text IPC before displaying success.
 - Apple Developer enrollment is calendar-critical-path: notarization can't begin until the team is enrolled and the Developer ID Application certificate is issued. Start in parallel with engineering work, not after.
 - Update channel decision (Sparkle vs. MDM-distributed `.pkg`). Many enterprises block self-updating apps via MDM policy. Survey 2–3 likely pilot customers before wiring Sparkle.
 - Reconciliation of the 95.74 s vs. 1.96 s perf numbers between the master release-gates doc and the actual benchmark.
@@ -598,10 +633,10 @@ Tracked but not blocking the buyer demo:
 
 | Risk | Why it matters | Mitigation |
 |---|---|---|
-| **2 unpushed commits ahead of last hosted CI** | Dependency swap and setup guide haven't been validated by hosted runners | Push and re-trigger CI before next merge attempt |
-| **`AttestationRecord` still carries `file_path`** | Implementing the attestation workflow on the current dataclass would re-leak filenames into vault-persisted records, undoing Phase 2 audit-safety | Redesign the dataclass before any attestation workflow lands. Add the same PII-bearing-filename test that pipeline integration uses. |
+| **Attestation workflow not built** | The safe data model is ready, but sensitive workflows still do not require a user attestation step | Build the required ingest-review dialog and persist zero-PII attestation records before public beta |
 | **Hosted performance creeping toward gate** | Phase 4 hosted run was 7.49 s vs. 8 s gate; could be runner variance or a real regression | Re-run `performance-gate.yml` 3× on the tip commit and confirm the 95th percentile is comfortably under 8 s |
 | Follow-up pushes can stale PR checks | A final documentation or review fix can require checks to be re-run before merge | Re-check PR [#1](https://github.com/GreggBerretta/Cloakroom/pull/1) immediately before merging |
+| Native wrapper still not commercially packaged | Clipboard/wake false-success paths are improved, but customers still need a signed/notarized app, onboarding, updater policy, and wrapper integration tests | Treat native app hardening as the closed-pilot critical path |
 | Follow-up raw path additions | New report/audit call sites could reintroduce raw paths if they bypass the helpers | Use `append_sanitization_report()` / `append_audit_event()` and keep PII-bearing filename tests green |
 | Signed native app not built | `cloakroom demo` gives a one-command local web demo, but not a signed macOS `.app` | Phase 6 follow-up. Out of scope for the killer demo (in-person presentation, no hand-off). Required for closed pilot. |
 | Hebrew NER quality in this dev env | HE_PERSON detection on the bundled HE sample relies on `xx_ent_wiki_sm` fallback | Production install: `python -m spacy download he_core_news_sm`. Phase 1 explicitly does not assert HE_PERSON on the bundled sample. |
@@ -622,7 +657,7 @@ uv run python -m spacy download en_core_web_lg
 uv run python -m spacy download he_core_news_sm   # or xx_ent_wiki_sm
 
 # 2. Full test suite.
-uv run pytest -q                           # expect 329 passed
+uv run pytest -q                           # expect 333 passed
 
 # 3. EC-15 state integrity gate.
 uv run pytest -q tests/test_state_integrity/test_ec15_state_integrity.py
@@ -649,7 +684,7 @@ git push -u origin feature/demo-rules-and-il-entities
 gh pr create --base main --fill
 ```
 
-The GitHub CLI token now has `workflow` scope as of 2026-04-30; the CI filter cleanup is still a small repo-hygiene follow-up.
+The GitHub CLI token has `workflow` scope as of 2026-04-30; the CI filter cleanup is included in the PR closeout safety batch.
 
 ---
 

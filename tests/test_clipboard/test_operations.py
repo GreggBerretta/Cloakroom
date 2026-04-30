@@ -88,11 +88,32 @@ class TestClipboardOperations:
         shield_result = operations.shield_clipboard(workspace_ctx, score_threshold=0.5)
         assert shield_result.entities_found == 1
         assert shield_result.tokens_applied == 1
+        assert shield_result.anonymized_text == "[PERSON_00001]"
         assert clipboard["value"] == "[PERSON_00001]"
 
         restore_result = operations.restore_clipboard(workspace_ctx)
         assert restore_result.verification_passed is True
+        assert restore_result.restored_text == "John Smith"
         assert clipboard["value"] == "John Smith"
+        assert workspace_ctx.vault_data.anonymize_count == 1
+        assert workspace_ctx.vault_data.restore_count == 1
+
+    def test_text_transform_roundtrip_does_not_touch_system_clipboard(self, workspace_ctx, monkeypatch):
+        monkeypatch.setattr(operations, "DetectionEngine", FakeDetectionEngine)
+        clipboard = _mock_clipboard(monkeypatch, "do not change")
+
+        shield_result = operations.shield_clipboard_text(workspace_ctx, "John Smith")
+
+        assert shield_result.anonymized_text == "[PERSON_00001]"
+        assert clipboard["value"] == "do not change"
+
+        restore_result = operations.restore_clipboard_text(
+            workspace_ctx,
+            shield_result.anonymized_text,
+        )
+
+        assert restore_result.restored_text == "John Smith"
+        assert clipboard["value"] == "do not change"
         assert workspace_ctx.vault_data.anonymize_count == 1
         assert workspace_ctx.vault_data.restore_count == 1
 

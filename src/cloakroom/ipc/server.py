@@ -12,7 +12,12 @@ import socket
 from typing import Any
 
 from cloakroom import __version__ as ENGINE_VERSION
-from cloakroom.clipboard.operations import restore_clipboard, shield_clipboard
+from cloakroom.clipboard.operations import (
+    restore_clipboard,
+    restore_clipboard_text,
+    shield_clipboard,
+    shield_clipboard_text,
+)
 from cloakroom.detection.engine import (
     DETECTION_MODE_CHOICES,
     DetectionEngine,
@@ -239,6 +244,10 @@ class IPCServer:
             dispatch_result = self._dispatch_clipboard_anonymize(request)
         elif request_type == "CLIPBOARD_RESTORE":
             dispatch_result = self._dispatch_clipboard_restore(request)
+        elif request_type == "TEXT_ANONYMIZE":
+            dispatch_result = self._dispatch_text_anonymize(request)
+        elif request_type == "TEXT_RESTORE":
+            dispatch_result = self._dispatch_text_restore(request)
         elif request_type == "VAULT_EXPORT_KEY":
             dispatch_result = self._dispatch_vault_export_key(request)
         elif request_type == "VAULT_IMPORT_KEY":
@@ -424,6 +433,53 @@ class IPCServer:
         result = restore_clipboard(ctx)
         return DispatchResult(
             payload={
+                "tokens_restored": result.tokens_restored,
+                "verification_passed": result.verification_passed,
+            },
+            workspace_version=ctx.vault_data.updated_at,
+        )
+
+    def _dispatch_text_anonymize(self, request: IPCRequest) -> DispatchResult:
+        ctx = self._load_workspace(request, create_if_missing=True)
+        payload = request.payload
+        text = self._require_str(payload, "text")
+
+        force_reanonymize = bool(payload.get("force_reanonymize", False))
+        override_reason = str(payload.get("reason", "")).strip()
+        if force_reanonymize and not override_reason:
+            raise CloakroomError("force_reanonymize requires a non-empty reason")
+
+        result = shield_clipboard_text(
+            ctx,
+            text,
+            score_threshold=float(payload.get("score_threshold", 0.7)),
+            detection_mode=str(payload.get("detection_mode", "balanced")),
+            language=str(payload.get("language", "auto")),
+            hebrew_backend=str(payload.get("hebrew_backend", "auto")),
+            hebrew_stanza_model=str(payload.get("hebrew_stanza_model", "he")),
+            hebrew_transformer_model=str(
+                payload.get("hebrew_transformer_model", "CordwainerSmith/GolemPII-v1")
+            ),
+            force_reanonymize=force_reanonymize,
+            override_reason=override_reason,
+            override_user="swift-wrapper",
+        )
+        return DispatchResult(
+            payload={
+                "text": result.anonymized_text,
+                "entities_found": result.entities_found,
+                "tokens_applied": result.tokens_applied,
+                "model_hash": result.model_hash,
+            },
+            workspace_version=ctx.vault_data.updated_at,
+        )
+
+    def _dispatch_text_restore(self, request: IPCRequest) -> DispatchResult:
+        ctx = self._load_workspace(request, create_if_missing=False)
+        result = restore_clipboard_text(ctx, self._require_str(request.payload, "text"))
+        return DispatchResult(
+            payload={
+                "text": result.restored_text,
                 "tokens_restored": result.tokens_restored,
                 "verification_passed": result.verification_passed,
             },

@@ -184,17 +184,42 @@ class TestAttestationRecord:
             entity_types={"PERSON": 5, "EMAIL_ADDRESS": 10},
             completion_time_seconds=12.5,
             confirmed=True,
-            file_path="/tmp/data.xlsx",
+            file_hash="a" * 64,
+            file_label_safe="xlsx:" + "a" * 12,
         )
         d = record.to_dict()
         restored = AttestationRecord.from_dict(d)
 
+        assert "file_path" not in d
         assert restored.user == "cli"
         assert restored.entity_count == 15
         assert restored.entity_types == {"PERSON": 5, "EMAIL_ADDRESS": 10}
         assert restored.completion_time_seconds == 12.5
         assert restored.confirmed is True
-        assert restored.file_path == "/tmp/data.xlsx"
+        assert restored.file_hash == "a" * 64
+        assert restored.file_label_safe == "xlsx:" + "a" * 12
+
+    def test_legacy_file_path_normalizes_to_safe_reference(self):
+        record = AttestationRecord.from_dict(
+            {
+                "timestamp": now_iso(),
+                "user": "cli",
+                "entity_count": 1,
+                "entity_types": {"PERSON": 1},
+                "completion_time_seconds": 2.5,
+                "confirmed": True,
+                "file_path": "/tmp/Sarah Morgan - Acme payroll.xlsx",
+                "file_hash": "b" * 64,
+                "file_ext": ".xlsx",
+            }
+        )
+        d = record.to_dict()
+
+        assert "file_path" not in d
+        assert "Sarah" not in str(d)
+        assert "Acme" not in str(d)
+        assert record.file_hash == "b" * 64
+        assert record.file_label_safe == "xlsx:" + "b" * 12
 
 
 class TestHallucinationFlag:

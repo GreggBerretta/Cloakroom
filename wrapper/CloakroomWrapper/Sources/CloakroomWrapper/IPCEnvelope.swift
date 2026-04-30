@@ -68,6 +68,13 @@ public enum JSONValue: Codable, Equatable, Sendable {
         }
         return nil
     }
+
+    public var boolValue: Bool? {
+        if case let .bool(value) = self {
+            return value
+        }
+        return nil
+    }
 }
 
 public struct IPCEnvelope: Codable, Equatable, Sendable {

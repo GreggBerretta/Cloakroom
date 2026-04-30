@@ -343,7 +343,8 @@ class AttestationRecord:
     entity_types: dict[str, int]  # type -> count
     completion_time_seconds: float
     confirmed: bool
-    file_path: str
+    file_hash: str
+    file_label_safe: str
 
     def to_dict(self) -> dict:
         return {
@@ -353,11 +354,24 @@ class AttestationRecord:
             "entity_types": self.entity_types,
             "completion_time_seconds": self.completion_time_seconds,
             "confirmed": self.confirmed,
-            "file_path": self.file_path,
+            "file_hash": self.file_hash,
+            "file_label_safe": self.file_label_safe,
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> AttestationRecord:
+        file_hash = str(data.get("file_hash", ""))
+        file_label_safe = str(data.get("file_label_safe", ""))
+        if not file_hash or not file_label_safe:
+            from cloakroom.governance.file_identity import build_safe_file_reference
+
+            safe_ref = build_safe_file_reference(
+                data.get("file_path", ""),
+                file_hash=file_hash,
+                file_ext=str(data.get("file_ext", "")),
+            )
+            file_hash = safe_ref["file_hash"]
+            file_label_safe = safe_ref["file_label_safe"]
         return cls(
             timestamp=data["timestamp"],
             user=data["user"],
@@ -365,7 +379,8 @@ class AttestationRecord:
             entity_types=data["entity_types"],
             completion_time_seconds=data["completion_time_seconds"],
             confirmed=data["confirmed"],
-            file_path=data["file_path"],
+            file_hash=file_hash,
+            file_label_safe=file_label_safe,
         )
 
 

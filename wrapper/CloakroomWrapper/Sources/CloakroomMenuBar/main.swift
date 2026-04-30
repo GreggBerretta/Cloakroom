@@ -16,6 +16,39 @@ private enum MenuConstants {
     static let clipboardRestoreKeyCode: UInt16 = 15 // R
 }
 
+private enum PasteboardClipboardStoreError: Error {
+    case writeFailed
+}
+
+private final class PasteboardClipboardStore: ClipboardStore {
+    private let pasteboard: NSPasteboard
+
+    init(pasteboard: NSPasteboard = .general) {
+        self.pasteboard = pasteboard
+    }
+
+    var changeCount: Int {
+        pasteboard.changeCount
+    }
+
+    func readString() -> String? {
+        pasteboard.string(forType: .string)
+    }
+
+    func writeString(_ value: String) throws {
+        pasteboard.clearContents()
+        guard pasteboard.setString(value, forType: .string) else {
+            throw PasteboardClipboardStoreError.writeFailed
+        }
+    }
+}
+
+private enum MenuBarOperationError: Error {
+    case validationHandled(String)
+    case missingPayload(String)
+    case invalidHeartbeat
+}
+
 @main
 struct CloakroomMenuBarMain {
     static func main() {
@@ -35,6 +68,7 @@ final class CloakroomMenuBarDelegate: NSObject, NSApplicationDelegate {
     private let updateManager = UpdateManager()
     private let crashReporter = LocalCrashReporter()
     private let defaults = UserDefaults.standard
+    private lazy var clipboardGuard = ClipboardGuard(store: PasteboardClipboardStore())
 
     private lazy var ipcClient: HybridIPCClient = {
         let socketPath = "\(NSHomeDirectory())/.cloakroom/ipc/engine.sock"
@@ -248,7 +282,12 @@ final class CloakroomMenuBarDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func handleWake() {
         do {
-            try controller.handleSystemWake(healthCheckPassed: true, vaultIntegrityPassed: true)
+            let engineHealthy = runHeartbeatProbe(recordResult: false)
+            let vaultHealthy = runVaultIntegrityProbe()
+            try controller.handleSystemWake(
+                healthCheckPassed: engineHealthy,
+                vaultIntegrityPassed: vaultHealthy
+            )
             setStatusSubtitle("READY")
         } catch {
             setStatusSubtitle("HARD_FAIL")
@@ -257,30 +296,42 @@ final class CloakroomMenuBarDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func shieldClipboard() {
-        runClipboardOperation(requestType: "CLIPBOARD_ANONYMIZE")
+        runGuardedClipboardOperation(requestType: "TEXT_ANONYMIZE", restore: false)
     }
 
     @objc private func restoreClipboard() {
-        runClipboardOperation(requestType: "CLIPBOARD_RESTORE")
+        runGuardedClipboardOperation(requestType: "TEXT_RESTORE", restore: true)
     }
 
-    private func runClipboardOperation(requestType: String) {
+    private func runGuardedClipboardOperation(requestType: String, restore: Bool) {
         do {
             try controller.beginOperation(name: requestType.lowercased())
-            let requestID = UUID().uuidString
-            let request = IPCEnvelope(
-                protocolVersion: MenuConstants.protocolVersion,
-                engineVersion: MenuConstants.engineVersion,
-                requestID: requestID,
-                type: requestType,
-                workspaceID: controller.currentWorkspaceID,
-                workspaceVersion: controller.currentWorkspaceVersion,
-                payload: payloadWithLicense([:])
-            )
-            let response = try ipcClient.roundTrip(request: request, timeoutSeconds: 20)
+
+            var successRequestID = ""
+            var successResponse: IPCEnvelope?
+            let transform: (String) throws -> String = { [weak self] input in
+                guard let self else { throw MenuBarOperationError.missingPayload("delegate") }
+                let result = try self.requestTextTransform(requestType: requestType, text: input)
+                successRequestID = result.requestID
+                successResponse = result.response
+                return result.text
+            }
+
+            if restore {
+                _ = try clipboardGuard.restore(engineTransform: transform)
+            } else {
+                _ = try clipboardGuard.anonymize(engineTransform: transform)
+            }
+
+            guard let response = successResponse else {
+                throw MenuBarOperationError.missingPayload("response")
+            }
+            guard runHeartbeatProbe(recordResult: true) else {
+                throw MenuBarOperationError.invalidHeartbeat
+            }
             _ = try controller.handleOperationEnvelope(
                 response,
-                expectedRequestID: requestID,
+                expectedRequestID: successRequestID,
                 expectedProtocolVersion: MenuConstants.protocolVersion,
                 expectedSchemaHash: "unused",
                 clipboardVerified: true
@@ -290,9 +341,110 @@ final class CloakroomMenuBarDelegate: NSObject, NSApplicationDelegate {
                 version: response.workspaceVersion
             )
             setStatusSubtitle("READY")
+        } catch MenuBarOperationError.validationHandled {
+            setStatusSubtitle("READY")
         } catch {
             setStatusSubtitle("HARD_FAIL")
             crashReporter.record(error: error, context: ["stage": requestType.lowercased()])
+        }
+    }
+
+    private func requestTextTransform(
+        requestType: String,
+        text: String
+    ) throws -> (requestID: String, response: IPCEnvelope, text: String) {
+        let requestID = UUID().uuidString
+        let request = IPCEnvelope(
+            protocolVersion: MenuConstants.protocolVersion,
+            engineVersion: MenuConstants.engineVersion,
+            requestID: requestID,
+            type: requestType,
+            workspaceID: controller.currentWorkspaceID,
+            workspaceVersion: controller.currentWorkspaceVersion,
+            payload: payloadWithLicense(["text": .string(text)])
+        )
+        let response = try ipcClient.roundTrip(request: request, timeoutSeconds: 20)
+        try response.validateResponse(
+            expectedRequestID: requestID,
+            expectedProtocolVersion: MenuConstants.protocolVersion,
+            expectedSchemaHash: "unused"
+        )
+
+        if response.status != "SUCCESS" {
+            _ = try controller.handleOperationEnvelope(
+                response,
+                expectedRequestID: requestID,
+                expectedProtocolVersion: MenuConstants.protocolVersion,
+                expectedSchemaHash: "unused",
+                clipboardVerified: false
+            )
+            throw MenuBarOperationError.validationHandled(response.errorMessage ?? requestType)
+        }
+
+        guard let transformedText = response.payload["text"]?.stringValue else {
+            throw MenuBarOperationError.missingPayload("payload.text")
+        }
+        return (requestID, response, transformedText)
+    }
+
+    private func runHeartbeatProbe(recordResult: Bool = true) -> Bool {
+        let requestID = UUID().uuidString
+        let request = IPCEnvelope(
+            protocolVersion: MenuConstants.protocolVersion,
+            engineVersion: MenuConstants.engineVersion,
+            requestID: requestID,
+            type: "HEARTBEAT",
+            workspaceID: controller.currentWorkspaceID,
+            workspaceVersion: controller.currentWorkspaceVersion,
+            payload: payloadWithLicense([:])
+        )
+
+        do {
+            let response = try ipcClient.roundTrip(request: request, timeoutSeconds: 10)
+            try response.validateResponse(
+                expectedRequestID: requestID,
+                expectedProtocolVersion: MenuConstants.protocolVersion,
+                expectedSchemaHash: "unused"
+            )
+            let healthy = response.status == "SUCCESS"
+                && response.payload["alive"]?.boolValue == true
+                && response.payload["protocol_version"]?.stringValue == MenuConstants.protocolVersion
+            if recordResult {
+                controller.recordHeartbeat(success: healthy)
+            }
+            return healthy
+        } catch {
+            if recordResult {
+                controller.recordHeartbeat(success: false)
+            }
+            crashReporter.record(error: error, context: ["stage": "heartbeat"])
+            return false
+        }
+    }
+
+    private func runVaultIntegrityProbe() -> Bool {
+        let requestID = UUID().uuidString
+        let request = IPCEnvelope(
+            protocolVersion: MenuConstants.protocolVersion,
+            engineVersion: MenuConstants.engineVersion,
+            requestID: requestID,
+            type: "STATS_QUERY",
+            workspaceID: controller.currentWorkspaceID,
+            workspaceVersion: controller.currentWorkspaceVersion,
+            payload: payloadWithLicense([:])
+        )
+
+        do {
+            let response = try ipcClient.roundTrip(request: request, timeoutSeconds: 10)
+            try response.validateResponse(
+                expectedRequestID: requestID,
+                expectedProtocolVersion: MenuConstants.protocolVersion,
+                expectedSchemaHash: "unused"
+            )
+            return response.status == "SUCCESS"
+        } catch {
+            crashReporter.record(error: error, context: ["stage": "vault_integrity_probe"])
+            return false
         }
     }
 

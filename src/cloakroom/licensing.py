@@ -84,13 +84,13 @@ def enforce_license_policy(
     }
     operation = request_type.upper()
 
-    if operation in {"ANONYMIZE_FILE", "CLIPBOARD_ANONYMIZE"}:
+    if operation in {"ANONYMIZE_FILE", "CLIPBOARD_ANONYMIZE", "TEXT_ANONYMIZE"}:
         _enforce_pro_features_for_anonymize(payload, license_context=license_context)
     if operation == "WORKSPACE_SWITCH":
         _enforce_ttl_policy(payload, license_context=license_context)
     if operation in _AUDIT_EXPORT_REQUEST_TYPES:
         _require_pro(license_context, feature="audit export")
-    if operation in {"RESTORE_FILE", "CLIPBOARD_RESTORE"} and not license_context.is_pro:
+    if operation in {"RESTORE_FILE", "CLIPBOARD_RESTORE", "TEXT_RESTORE"} and not license_context.is_pro:
         used = _consume_free_restore_credit()
         usage["free_daily_restores_used"] = used
         usage["free_daily_restores_remaining"] = FREE_RESTORE_DAILY_LIMIT - used
