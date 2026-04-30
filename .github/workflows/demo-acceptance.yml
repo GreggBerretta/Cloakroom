@@ -30,8 +30,11 @@ jobs:
       - name: Ensure pip exists for spaCy downloader
         run: uv run python -m ensurepip
 
-      - name: Install spaCy model
+      - name: Install English spaCy model
         run: uv run python -m spacy download en_core_web_lg
+
+      - name: Install Hebrew fallback spaCy model
+        run: uv run python -m spacy download xx_ent_wiki_sm
 
       - name: Run demo browser acceptance gate
         run: node scripts/demo_browser_acceptance.mjs --screenshot-dir demo-acceptance-artifacts

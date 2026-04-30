@@ -177,6 +177,7 @@ Current Phase 4 implementation is on the active branch after the Phase 3 commits
 - `POST /api/shield` now returns masked `review_items` for the detection review table. Raw original values are not returned in review rows.
 - Demo sample metadata now includes `customer_escalation_mixed.md`.
 - HE/IL deterministic leak markers are tracked for the HE and mixed samples.
+- The browser API helper handles JSON and non-JSON backend errors so demo users see readable failure copy instead of a JSON parser exception if the local server returns a plain-text 500.
 
 **Coverage**
 - Added HTTP/static tests proving `/` serves the Phase 4 UI and static assets.
@@ -199,7 +200,7 @@ Current Phase 5 implementation is on the active branch after the Phase 4 commits
 **Hosted gate** ([.github/workflows/demo-acceptance.yml](.github/workflows/demo-acceptance.yml))
 - New GitHub Actions workflow: `Demo Acceptance`.
 - Runs on `pull_request` and `workflow_dispatch`.
-- Installs Python/uv dependencies, Node 22, and the English spaCy model, then runs the browser acceptance script.
+- Installs Python/uv dependencies, Node 22, the English spaCy model, and the multilingual Hebrew fallback spaCy model (`xx_ent_wiki_sm`), then runs the browser acceptance script.
 - Uploads screenshots as `demo-acceptance-artifacts`.
 
 **Local result**
@@ -317,7 +318,7 @@ Run command: `uv run pytest -q` (canonical tree).
 [scripts/demo_browser_acceptance.mjs](scripts/demo_browser_acceptance.mjs):
 - Browser gate starts the local server, drives Chrome through Shield, Restore-blocked, Trust Center, and mobile layout.
 - Local run passed with 12 replacements, 0 leaks, 1 changed/invented token blocked, 0 partial output, and mobile no-overflow.
-- Hosted hardening run pending after the 2026-04-30 timeout/diagnostics fix.
+- Hosted hardening run exposed missing Hebrew fallback model installation in the workflow; workflow fix pending hosted confirmation.
 
 [tests/test_demo_server/test_app.py](tests/test_demo_server/test_app.py):
 - `test_demo_url_formats_loopback_hosts`
@@ -350,6 +351,7 @@ Browser verification used installed Chrome headless/CDP fallback because Browser
 - Screenshot artifacts from this local QA pass were written to `/tmp/cloakroom_phase4_desktop_after_shield.png`, `/tmp/cloakroom_phase4_mobile_checked.png`, `/tmp/cloakroom_phase4_restore_blocked.png`, and `/tmp/cloakroom_phase4_trust_center.png`.
 - Phase 5 acceptance screenshots were written to `/tmp/cloakroom_phase5_acceptance/`.
 - Phase 5 hardened acceptance screenshots were written to `/tmp/cloakroom_phase5_acceptance_after_fix/`.
+- Phase 5 model-workflow acceptance screenshots were written to `/tmp/cloakroom_phase5_acceptance_after_model_fix/`.
 
 ### 3.9 GitHub-hosted closeout validation
 
@@ -358,7 +360,7 @@ Browser verification used installed Chrome headless/CDP fallback because Browser
 - **Phase 2 hosted checks** — passed on 2026-04-29 after the audit/report safety commit was pushed: CI tests, Security Scan dependency audit, EC-15, and manual `performance-gate.yml`.
 - **Phase 3 hosted checks** — passed on 2026-04-29 after the demo backend commit was pushed: CI tests, Security Scan dependency audit, EC-15, and manual `performance-gate.yml`.
 - **Phase 4 hosted checks** — passed on 2026-04-29 after the demo UI commit was pushed: CI tests, Security Scan dependency audit, EC-15, and manual `performance-gate.yml`.
-- **Phase 5/6 hosted Demo Acceptance** — first hosted run on commit `b94c5cf` failed on 2026-04-30 while waiting 45s for the first cold Shield result. Local reproduction still passed. The acceptance gate has been hardened with pre-navigation CDP instrumentation, 120s cold-start patience, and failure diagnostics; hosted re-run is pending on the next push.
+- **Phase 5/6 hosted Demo Acceptance** — first hosted run on commit `b94c5cf` failed on 2026-04-30 while waiting 45s for the first cold Shield result. The hardened re-run on `763e1c8` revealed the real backend error: the demo workflow installed only `en_core_web_lg`, but Cloakroom's model-hash lock also resolves the Hebrew spaCy backend, so `xx_ent_wiki_sm` was missing. The workflow now installs `xx_ent_wiki_sm`; hosted confirmation is pending on the next push.
 - **Local closeout validation** — latest completed on 2026-04-30:
   - `uv run pytest -q` -> 324 passed, 1 warning
   - `swift build --package-path wrapper/CloakroomWrapper` -> pass
@@ -372,6 +374,8 @@ Browser verification used installed Chrome headless/CDP fallback because Browser
   - `node --check scripts/demo_browser_acceptance.mjs` -> pass
   - `node scripts/demo_browser_acceptance.mjs --screenshot-dir /tmp/cloakroom_phase5_acceptance` -> pass
   - `node scripts/demo_browser_acceptance.mjs --screenshot-dir /tmp/cloakroom_phase5_acceptance_after_fix` -> pass
+  - `uv run python -c "import spacy; spacy.load('xx_ent_wiki_sm')"` -> pass
+  - `node scripts/demo_browser_acceptance.mjs --screenshot-dir /tmp/cloakroom_phase5_acceptance_after_model_fix` -> pass
   - `uv run cloakroom demo --host 127.0.0.1 --port <random> --no-open-browser` + `/api/health` -> pass
 
 ---
@@ -410,7 +414,7 @@ Browser verification used installed Chrome headless/CDP fallback because Browser
 
 | Gate | State |
 |---|---|
-| Phase 5/6 hosted Demo Acceptance | First hosted run on `b94c5cf` timed out waiting for the cold Shield UI result after 45s. Current branch includes a timeout/diagnostics fix and needs hosted confirmation on the next push. |
+| Phase 5/6 hosted Demo Acceptance | First hosted run timed out, then the hardened run identified a missing Hebrew fallback spaCy model in the workflow. Current branch installs `xx_ent_wiki_sm` and needs hosted confirmation on the next push. |
 
 ### 4.3 Known regressions / edge cases left open
 

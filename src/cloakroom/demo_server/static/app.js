@@ -81,7 +81,10 @@ async function api(path, options = {}) {
     },
     ...options,
   });
-  const payload = await response.json();
+  const contentType = response.headers.get("content-type") || "";
+  const payload = contentType.includes("application/json")
+    ? await response.json()
+    : { detail: await response.text() };
   if (!response.ok) {
     const detail = payload.detail || payload.error?.message || response.statusText;
     throw new Error(detail);
